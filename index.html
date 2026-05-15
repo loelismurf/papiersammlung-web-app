@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FleetTrack</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#0a0c0f; --panel:#0f1216; --border:#1e2530; --border2:#2a3340;
+      --text:#c8d4e0; --muted:#4a5a6a; --accent:#00d4ff; --green:#a8ff3e;
+      --orange:#ff6b35; --pink:#ff3e9d; --yellow:#ffd700;
+      --font-ui:'Rajdhani',sans-serif; --font-mono:'JetBrains Mono',monospace;
+      --radius:4px;
+    }
+    html,body { height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:var(--font-ui); }
+    #app { display:flex; height:100vh; width:100vw; }
+
+    /* ── Sidebar ── */
+    #sidebar { width:320px; min-width:320px; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; z-index:10; }
+    #sidebar-header { padding:18px 20px 14px; border-bottom:1px solid var(--border); background:#0c0e12; }
+    .logo { font-size:22px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--accent); }
+    .logo span { color:var(--text); }
+    .tagline { font-size:11px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-top:2px; font-family:var(--font-mono); }
+
+    #identity-box { padding:14px 20px; border-bottom:1px solid var(--border); background:#0d1014; }
+    .section-label { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--muted); margin-bottom:8px; font-family:var(--font-mono); }
+    #join-form { display:flex; gap:8px; }
+    #join-form input { flex:1; background:var(--bg); border:1px solid var(--border2); color:var(--text); padding:8px 12px; border-radius:var(--radius); font-family:var(--font-ui); font-size:14px; font-weight:500; outline:none; transition:border-color .2s; }
+    #join-form input:focus { border-color:var(--accent); }
+    #join-form input::placeholder { color:var(--muted); }
+
+    .btn { background:transparent; border:1px solid var(--border2); color:var(--text); padding:8px 14px; border-radius:var(--radius); font-family:var(--font-ui); font-size:13px; font-weight:600; letter-spacing:1px; text-transform:uppercase; cursor:pointer; transition:all .2s; white-space:nowrap; }
+    .btn:hover { border-color:var(--accent); color:var(--accent); }
+    .btn.primary { border-color:var(--accent); color:var(--accent); }
+    .btn.primary:hover { background:var(--accent); color:var(--bg); }
+    .btn.success { border-color:var(--green); color:var(--green); }
+    .btn.success:hover { background:var(--green); color:var(--bg); }
+    .btn.danger { border-color:var(--orange); color:var(--orange); }
+    .btn.danger:hover { background:var(--orange); color:var(--bg); }
+    .btn.small { padding:5px 10px; font-size:11px; }
+    .btn:disabled { opacity:.3; cursor:not-allowed; pointer-events:none; }
+
+    #vehicle-info { display:none; align-items:center; gap:10px; }
+    #vehicle-info .vname { font-size:16px; font-weight:700; color:var(--accent); flex:1; }
+    .vstatus { font-size:11px; font-family:var(--font-mono); padding:3px 8px; border-radius:2px; text-transform:uppercase; letter-spacing:1px; }
+    .vstatus.idle { background:#1a2030; color:var(--muted); }
+    .vstatus.driving { background:#0a2010; color:var(--green); }
+    .vstatus.paused { background:#2a1a08; color:var(--orange); }
+
+    #gps-bar { padding:8px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; font-size:12px; font-family:var(--font-mono); background:#0c0e12; }
+    .gps-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+    .gps-dot.active { background:var(--green); box-shadow:0 0 6px var(--green); animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    #gps-coords { color:var(--muted); font-size:11px; }
+
+    #routes-panel { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:8px; }
+    #routes-panel::-webkit-scrollbar { width:4px; }
+    #routes-panel::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+
+    .route-card { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; position:relative; overflow:hidden; transition:border-color .2s; }
+    .route-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--route-color,var(--muted)); }
+    .route-card.hidden-route { opacity:.4; }
+    .route-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .route-name { font-size:15px; font-weight:700; flex:1; letter-spacing:.5px; }
+    .route-status-badge { font-size:10px; font-family:var(--font-mono); padding:2px 7px; border-radius:2px; text-transform:uppercase; letter-spacing:1px; }
+    .badge-pending  { background:#1a2030; color:var(--muted); }
+    .badge-active   { background:#0a2010; color:var(--green); }
+    .badge-completed{ background:#0a1a2a; color:var(--accent); }
+    .badge-paused   { background:#2a1a08; color:var(--orange); }
+    .progress-bar { height:3px; background:var(--border); border-radius:2px; margin-bottom:10px; overflow:hidden; }
+    .progress-fill { height:100%; border-radius:2px; transition:width .5s ease; }
+    .route-meta { font-size:11px; color:var(--muted); font-family:var(--font-mono); margin-bottom:10px; }
+    .route-actions { display:flex; gap:6px; flex-wrap:wrap; }
+
+    #vehicles-panel { border-top:1px solid var(--border); padding:14px; background:#0c0e12; }
+    .vehicle-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+    .vehicle-item { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); }
+    .vehicle-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+    .vehicle-dot.paused { background:var(--orange); }
+    .vehicle-dot.idle { background:var(--muted); }
+    .vehicle-item .vn { font-weight:600; flex:1; }
+    .vehicle-item .vr { font-size:11px; font-family:var(--font-mono); color:var(--muted); }
+    .no-vehicles { font-size:12px; color:var(--muted); font-family:var(--font-mono); padding:4px 0; }
+
+    /* ── Map ── */
+    #map-container { flex:1; position:relative; }
+    #map { width:100%; height:100%; }
+    .leaflet-tile { filter:brightness(.7) saturate(.6) contrast(1.1); }
+
+    #map-top-bar { position:absolute; top:12px; left:12px; right:12px; display:flex; gap:10px; z-index:500; pointer-events:none; }
+    .map-badge { background:rgba(10,12,15,.85); backdrop-filter:blur(6px); border:1px solid var(--border2); border-radius:var(--radius); padding:8px 14px; font-size:12px; font-family:var(--font-mono); pointer-events:auto; }
+    .map-badge .label { color:var(--muted); font-size:10px; letter-spacing:2px; text-transform:uppercase; }
+    .map-badge .value { color:var(--text); font-weight:500; margin-top:2px; }
+
+    #poll-indicator { position:absolute; bottom:20px; right:12px; z-index:500; display:flex; align-items:center; gap:8px; background:rgba(10,12,15,.85); backdrop-filter:blur(6px); border:1px solid var(--border2); border-radius:var(--radius); padding:8px 12px; font-size:11px; font-family:var(--font-mono); }
+    .poll-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); transition:background .2s; }
+    .poll-dot.active { background:var(--green); box-shadow:0 0 6px var(--green); }
+
+    #notifications { position:absolute; top:70px; right:12px; z-index:600; display:flex; flex-direction:column; gap:6px; max-width:280px; }
+    .notif { background:rgba(10,12,15,.92); border:1px solid var(--border2); border-left:3px solid var(--accent); border-radius:var(--radius); padding:10px 14px; font-size:13px; animation:slideIn .3s ease; }
+    .notif.success { border-left-color:var(--green); }
+    .notif.warning { border-left-color:var(--orange); }
+    @keyframes slideIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+
+    @media (max-width:700px) {
+      #sidebar { width:100%; min-width:0; position:absolute; bottom:0; left:0; right:0; height:55vh; border-right:none; border-top:1px solid var(--border); z-index:1000; }
+      #map-container { width:100%; height:45vh; }
+      #app { flex-direction:column; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <div class="logo">Fleet<span>Track</span></div>
+      <div class="tagline">Echtzeit Routenverfolgung</div>
+    </div>
+    <div id="identity-box">
+      <div class="section-label">Fahrzeug</div>
+      <div id="join-form">
+        <input id="vehicle-name-input" type="text" placeholder="Fahrzeugname eingeben..." maxlength="24" />
+        <button class="btn primary" id="join-btn">Verbinden</button>
+      </div>
+      <div id="vehicle-info">
+        <div class="vname" id="display-vname">—</div>
+        <div class="vstatus idle" id="display-vstatus">Inaktiv</div>
+      </div>
+    </div>
+    <div id="gps-bar">
+      <div class="gps-dot" id="gps-dot"></div>
+      <span id="gps-coords">GPS nicht aktiv</span>
+    </div>
+    <div id="routes-panel">
+      <div class="section-label" style="padding:0 6px 4px">Routen</div>
+      <div id="route-list"></div>
+    </div>
+    <div id="vehicles-panel">
+      <div class="section-label">Aktive Fahrzeuge</div>
+      <div class="vehicle-list" id="vehicle-list"><div class="no-vehicles">Lade...</div></div>
+    </div>
+  </aside>
+
+  <div id="map-container">
+    <div id="map"></div>
+    <div id="map-top-bar">
+      <div class="map-badge"><div class="label">Fahrzeuge</div><div class="value" id="stat-vehicles">0</div></div>
+      <div class="map-badge"><div class="label">Aktive Routen</div><div class="value" id="stat-active">0</div></div>
+      <div class="map-badge"><div class="label">Erledigt</div><div class="value" id="stat-done">0</div></div>
+    </div>
+    <div id="notifications"></div>
+    <div id="poll-indicator">
+      <div class="poll-dot" id="poll-dot"></div>
+      <span id="poll-text">Synchronisiere...</span>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const API = 'api.php';
+let myToken  = localStorage.getItem('fleet_token') || null;
+let myName   = localStorage.getItem('fleet_name')  || null;
+let myActiveRouteId = null;
+let isJoined = false;
+let routes   = [];
+let vehicles = [];
+const routeLayers  = {};
+const vehicleMarkers = {};
+
+// ── Map ──────────────────────────────────────────────────────────────────────
+const map = L.map('map', { center:[47.3769, 8.5417], zoom:13, zoomControl:false });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© OpenStreetMap', maxZoom:19
+}).addTo(map);
+L.control.zoom({ position:'bottomleft' }).addTo(map);
+
+// ── Polling ──────────────────────────────────────────────────────────────────
+let pollTimer = null;
+
+async function pollState() {
+  const dot = document.getElementById('poll-dot');
+  dot.classList.add('active');
+  try {
+    const res = await fetch(`${API}?action=state`);
+    const data = await res.json();
+    routes   = data.routes   || [];
+    vehicles = data.vehicles || [];
+    renderAll();
+    document.getElementById('poll-text').textContent = 'Live';
+  } catch(e) {
+    document.getElementById('poll-text').textContent = 'Fehler';
+    notify('Verbindungsfehler', 'warning');
+  }
+  setTimeout(() => dot.classList.remove('active'), 400);
+}
+
+function startPolling() {
+  pollState();
+  pollTimer = setInterval(pollState, <?= POLL_INTERVAL ?>);
+}
+
+// ── API Helper ────────────────────────────────────────────────────────────────
+async function api(action, body = {}) {
+  try {
+    const res = await fetch(`${API}?action=${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return await res.json();
+  } catch(e) {
+    notify('API Fehler: ' + e.message, 'warning');
+    return { error: e.message };
+  }
+}
+
+// ── Join ──────────────────────────────────────────────────────────────────────
+document.getElementById('join-btn').addEventListener('click', joinVehicle);
+document.getElementById('vehicle-name-input').addEventListener('keydown', e => { if(e.key==='Enter') joinVehicle(); });
+
+// Auto-reconnect wenn Token vorhanden
+if (myToken && myName) {
+  document.getElementById('vehicle-name-input').value = myName;
+}
+
+async function joinVehicle() {
+  const name = document.getElementById('vehicle-name-input').value.trim();
+  if (!name) { notify('Bitte einen Fahrzeugnamen eingeben'); return; }
+
+  const res = await api('vehicle_join', { name, token: myToken });
+  if (res.error) { notify('Fehler: ' + res.error, 'warning'); return; }
+
+  myToken = res.token;
+  myName  = res.name;
+  localStorage.setItem('fleet_token', myToken);
+  localStorage.setItem('fleet_name',  myName);
+  isJoined = true;
+
+  document.getElementById('join-form').style.display = 'none';
+  document.getElementById('vehicle-info').style.display = 'flex';
+  document.getElementById('display-vname').textContent = myName;
+  updateMyStatus('idle');
+  notify(`${myName} verbunden`, 'success');
+  startGPS();
+}
+
+function updateMyStatus(status) {
+  const el = document.getElementById('display-vstatus');
+  el.className = `vstatus ${status}`;
+  const labels = { idle:'Inaktiv', driving:'Fährt', paused:'Pausiert' };
+  el.textContent = labels[status] || status;
+}
+
+// ── GPS ───────────────────────────────────────────────────────────────────────
+let gpsInitialized = false;
+
+function startGPS() {
+  if (!navigator.geolocation) {
+    document.getElementById('gps-coords').textContent = 'GPS nicht unterstützt';
+    return;
+  }
+  navigator.geolocation.watchPosition(
+    pos => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      document.getElementById('gps-dot').classList.add('active');
+      document.getElementById('gps-coords').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      if (isJoined) api('vehicle_position', { token: myToken, lat, lng });
+      if (!gpsInitialized) { map.setView([lat, lng], 15); gpsInitialized = true; }
+    },
+    err => { document.getElementById('gps-coords').textContent = 'GPS: ' + err.message; },
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+  );
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderRoutes();
+  renderRouteList();
+  renderVehicleMarkers();
+  renderVehicleList();
+  updateStats();
+  // Eigenen Status synchronisieren
+  if (isJoined) {
+    const me = vehicles.find(v => v.token === myToken);
+    if (me) updateMyStatus(me.status);
+  }
+}
+
+// ── Karte: Routen ─────────────────────────────────────────────────────────────
+function renderRoutes() {
+  routes.forEach(route => {
+    if (routeLayers[route.id]) {
+      routeLayers[route.id].forEach(l => map.removeLayer(l));
+    }
+    if (!route.visible) { routeLayers[route.id] = []; return; }
+
+    const color     = route.color;
+    const dashArray = route.status === 'paused'  ? '8,6' :
+                      route.status === 'pending' ? '4,4' : null;
+    const weight    = route.status === 'active'  ? 5 : 3;
+    const opacity   = route.status === 'completed' ? 0.4 : 0.9;
+
+    const line = L.polyline(route.coordinates, { color, weight, opacity, dashArray, lineCap:'round' });
+
+    let completedLine = null;
+    if ((route.status === 'active' || route.status === 'paused') && route.progress > 0) {
+      const endIdx = Math.floor((route.coordinates.length - 1) * route.progress / 100);
+      completedLine = L.polyline(route.coordinates.slice(0, endIdx + 1), {
+        color, weight: weight + 2, opacity: 1, lineCap:'round'
+      });
+    }
+
+    const sm = L.circleMarker(route.coordinates[0], { radius:6, fillColor:color, color:'#fff', weight:2, opacity:1, fillOpacity:1 });
+    const em = L.circleMarker(route.coordinates[route.coordinates.length-1], { radius:6, fillColor: route.status==='completed'?'#aaa':color, color:'#fff', weight:2, opacity:1, fillOpacity:1 });
+
+    const layers = [line, sm, em];
+    if (completedLine) layers.push(completedLine);
+    layers.forEach(l => l.addTo(map));
+
+    line.bindTooltip(`<b>${route.name}</b><br>${statusLabel(route.status)} — ${route.progress}%`, {
+      permanent:false, direction:'top', className:'route-tooltip'
+    });
+
+    routeLayers[route.id] = layers;
+  });
+}
+
+// ── Karte: Fahrzeuge ──────────────────────────────────────────────────────────
+function renderVehicleMarkers() {
+  const currentIds = new Set(vehicles.map(v => v.token));
+  Object.keys(vehicleMarkers).forEach(id => {
+    if (!currentIds.has(id)) { map.removeLayer(vehicleMarkers[id]); delete vehicleMarkers[id]; }
+  });
+
+  vehicles.forEach(v => {
+    if (v.lat === null || v.lng === null) return;
+    const isSelf  = v.token === myToken;
+    const color   = isSelf ? '#ffd700' : v.status === 'paused' ? '#ff6b35' : '#00d4ff';
+    const size    = isSelf ? 16 : 12;
+
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid ${isSelf?'#fff':'rgba(255,255,255,.7)'};border-radius:50%;box-shadow:0 0 ${isSelf?10:6}px ${color}"></div>`,
+      iconSize: [size, size], iconAnchor: [size/2, size/2],
+    });
+
+    if (vehicleMarkers[v.token]) {
+      vehicleMarkers[v.token].setLatLng([v.lat, v.lng]);
+      vehicleMarkers[v.token].setIcon(icon);
+    } else {
+      vehicleMarkers[v.token] = L.marker([v.lat, v.lng], { icon })
+        .addTo(map)
+        .bindTooltip(`<b>${v.name}</b>${isSelf?' (Ich)':''}<br>${statusLabel(v.status)}`, {
+          permanent: isSelf, direction:'top', offset:[0,-10], className:'vehicle-tooltip'
+        });
+    }
+  });
+}
+
+// ── Routenliste ───────────────────────────────────────────────────────────────
+function renderRouteList() {
+  const container = document.getElementById('route-list');
+  container.innerHTML = '';
+
+  routes.forEach(route => {
+    const isMyRoute = route.assigned_token === myToken;
+    const assignedV = vehicles.find(v => v.token === route.assigned_token);
+
+    const card = document.createElement('div');
+    card.className = 'route-card' + (route.visible ? '' : ' hidden-route');
+    card.style.setProperty('--route-color', route.color);
+
+    card.innerHTML = `
+      <div class="route-top">
+        <span class="route-name" style="color:${route.color}">${route.name}</span>
+        <span class="route-status-badge badge-${route.status}">${statusLabel(route.status)}</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:${route.progress}%;background:${route.color}"></div>
+      </div>
+      <div class="route-meta">
+        ${route.coordinates.length} Punkte ·
+        ${assignedV ? '🚛 ' + assignedV.name : 'Nicht zugewiesen'} ·
+        ${route.progress}%
+      </div>
+      <div class="route-actions">
+        <button class="btn small btn-toggle">${route.visible ? 'Ausblenden' : 'Einblenden'}</button>
+        <button class="btn small btn-focus">Fokus</button>
+        ${isJoined && route.status === 'pending' ? `<button class="btn small success btn-start">▶ Starten</button>` : ''}
+        ${isJoined && isMyRoute && route.status === 'active' ? `<button class="btn small danger btn-pause">⏸ Pause</button><button class="btn small success btn-done">✓ Erledigt</button>` : ''}
+        ${isJoined && isMyRoute && route.status === 'paused' ? `<button class="btn small success btn-resume">▶ Fortfahren</button><button class="btn small success btn-done">✓ Erledigt</button>` : ''}
+        ${(route.status === 'completed' || route.status === 'paused') ? `<button class="btn small btn-reset">↺ Reset</button>` : ''}
+      </div>`;
+
+    container.appendChild(card);
+
+    card.querySelector('.btn-toggle')?.addEventListener('click', async () => {
+      await api('route_toggle', { route_id: route.id });
+      pollState();
+    });
+    card.querySelector('.btn-focus')?.addEventListener('click', () => {
+      if (route.coordinates.length) map.fitBounds(L.latLngBounds(route.coordinates), { padding:[40,40] });
+    });
+    card.querySelector('.btn-start')?.addEventListener('click', async () => {
+      if (!isJoined) { notify('Bitte zuerst verbinden'); return; }
+      await api('route_start', { token: myToken, route_id: route.id });
+      myActiveRouteId = route.id;
+      updateMyStatus('driving');
+      pollState();
+    });
+    card.querySelector('.btn-pause')?.addEventListener('click', async () => {
+      await api('route_pause', { token: myToken, route_id: route.id });
+      updateMyStatus('paused');
+      pollState();
+    });
+    card.querySelector('.btn-resume')?.addEventListener('click', async () => {
+      await api('route_resume', { token: myToken, route_id: route.id });
+      myActiveRouteId = route.id;
+      updateMyStatus('driving');
+      pollState();
+    });
+    card.querySelector('.btn-done')?.addEventListener('click', async () => {
+      await api('route_complete', { token: myToken, route_id: route.id });
+      myActiveRouteId = null;
+      updateMyStatus('idle');
+      notify(`${route.name} erledigt ✓`, 'success');
+      pollState();
+    });
+    card.querySelector('.btn-reset')?.addEventListener('click', async () => {
+      if (confirm(`${route.name} zurücksetzen?`)) {
+        await api('route_reset', { route_id: route.id });
+        pollState();
+      }
+    });
+  });
+}
+
+// ── Fahrzeugliste ─────────────────────────────────────────────────────────────
+function renderVehicleList() {
+  const c = document.getElementById('vehicle-list');
+  if (!vehicles.length) { c.innerHTML = '<div class="no-vehicles">Keine Fahrzeuge verbunden</div>'; return; }
+  const routeMap = Object.fromEntries(routes.map(r => [r.id, r.name]));
+  c.innerHTML = vehicles.map(v => `
+    <div class="vehicle-item">
+      <div class="vehicle-dot ${v.status}"></div>
+      <div class="vn">${v.name}${v.token===myToken?' <small style="color:var(--accent)">(Ich)</small>':''}</div>
+      <div class="vr">${v.active_route ? (routeMap[v.active_route] || '—') : '—'}</div>
+    </div>`).join('');
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('stat-vehicles').textContent = vehicles.length;
+  document.getElementById('stat-active').textContent   = routes.filter(r => r.status==='active').length;
+  document.getElementById('stat-done').textContent     = routes.filter(r => r.status==='completed').length;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function statusLabel(s) {
+  return { pending:'Ausstehend', active:'Aktiv', completed:'Erledigt', paused:'Pausiert', idle:'Inaktiv', driving:'Fährt', offline:'Offline' }[s] || s;
+}
+function notify(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `notif ${type}`;
+  el.textContent = msg;
+  document.getElementById('notifications').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+startPolling();
+
+// Auto-reconnect
+if (myToken && myName) {
+  (async () => {
+    const res = await api('vehicle_join', { name: myName, token: myToken });
+    if (!res.error) {
+      isJoined = true;
+      document.getElementById('join-form').style.display = 'none';
+      document.getElementById('vehicle-info').style.display = 'flex';
+      document.getElementById('display-vname').textContent = myName;
+      updateMyStatus('idle');
+      startGPS();
+      notify(`${myName} wieder verbunden`, 'success');
+    }
+  })();
+}
+</script>
+<style>
+  .route-tooltip,.vehicle-tooltip { background:rgba(10,12,15,.92)!important; border:1px solid #2a3340!important; color:#c8d4e0!important; font-family:'JetBrains Mono',monospace!important; font-size:12px!important; padding:6px 10px!important; border-radius:4px!important; box-shadow:none!important; }
+  .route-tooltip::before,.vehicle-tooltip::before { display:none!important; }
+  .leaflet-container { background:#0a0c0f!important; }
+</style>
+</body>
+</html>
