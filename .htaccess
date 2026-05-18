@@ -1,29 +1,11 @@
-# Sicherheit: config/db/auth vor direktem Zugriff schützen
-<Files "config.php">
-    Order Allow,Deny
-    Deny from all
-</Files>
-<Files "db.php">
-    Order Allow,Deny
-    Deny from all
-</Files>
-<Files "auth.php">
-    Order Allow,Deny
-    Deny from all
-</Files>
-
-# tmp-Ordner komplett sperren
-<Directory "tmp">
-    Order Allow,Deny
-    Deny from all
-</Directory>
-
 # Startseite
 DirectoryIndex index.php login.php
 
 # Alte index.html weiterleiten
 RedirectMatch 301 ^/index\.html$ /index.php
 
-# PHP Fehler verstecken
-php_flag display_errors Off
-php_flag log_errors On
+# PHP-Hilfsdateien vor direktem Zugriff schützen
+<FilesMatch "^(config|db|auth)\.php$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
