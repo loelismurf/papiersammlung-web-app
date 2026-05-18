@@ -1,114 +1,110 @@
-# 🚛 FleetTrack – PHP Version (Shared Hosting)
+# ♻️ Papiersammlung – Pfadi Riko
 
-Läuft auf Netcup Webhosting / jedem PHP+MySQL Shared Hosting.
+Echtzeit-Routenverfolgung für Papiersammlungen. Läuft auf PHP + MySQL (Netcup Webhosting).
 
 ---
 
-## Setup in 4 Schritten
+## Dateien
 
-### 1. Dateien hochladen
-Alle Dateien per FTP/SFTP in dein Webhosting-Verzeichnis hochladen:
-```
-config.php
-db.php
-api.php
-install.php
-index.html
-```
+| Datei | Beschreibung |
+|-------|-------------|
+| `config.php` | **← DB-Zugangsdaten eintragen** |
+| `db.php` | Datenbankverbindung (nicht ändern) |
+| `auth.php` | Session-Hilffunktionen (nicht ändern) |
+| `install.php` | Einmalig ausführen, dann löschen |
+| `login.php` | Login-Seite |
+| `logout.php` | Abmelden |
+| `index.php` | Haupt-App mit Karte |
+| `admin.php` | Admin-Panel |
+| `api.php` | API (alle Endpunkte) |
+| `.htaccess` | Weiterleitungen + Sicherheit |
 
-### 2. Datenbank konfigurieren
-`config.php` öffnen und deine Zugangsdaten eintragen:
+---
+
+## Setup
+
+### 1. config.php anpassen
 ```php
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'dein_datenbankname');
 define('DB_USER', 'dein_benutzer');
 define('DB_PASS', 'dein_passwort');
 ```
-Die Zugangsdaten findest du in deinem **Netcup Plesk Panel** unter:
-Websites & Domains → Datenbanken
+
+### 2. Alle Dateien per FTP hochladen
+Ziel: `httpdocs/` (oder Unterordner)
 
 ### 3. Installation ausführen
-Im Browser aufrufen:
 ```
-https://deine-domain.de/install.php
+https://deine-domain.ch/install.php
 ```
-→ Erstellt alle Tabellen und lädt 4 Beispielrouten (Zürich)
+→ Erstellt alle Tabellen + Standard-Admin-Account
 
 ### 4. install.php löschen!
-Nach erfolgreicher Installation `install.php` per FTP löschen.
+
+### 5. Login
+```
+https://deine-domain.ch/
+```
+Standard: **admin / admin123** → sofort ändern!
 
 ---
 
-## App starten
-```
-https://deine-domain.de/
-```
+## Workflow
+
+### Admin
+1. Login → Admin-Panel
+2. **Routen-Vorlagen** erstellen (Karte anklicken)
+3. **Neue Sammlung** erstellen (Name + Datum)
+4. Routen aus Vorlagen zur Sammlung hinzufügen
+5. Sammlung **Aktivieren** → User sehen sie
+6. Benutzer für Fahrer anlegen
+
+### User / Fahrer
+1. Login
+2. Sammlung auswählen (falls mehrere aktiv)
+3. Fahrzeugname eingeben → Verbinden
+4. Route wählen → **▶ Start**
+5. GPS trackt automatisch den Fortschritt
+6. **⏸ Pause** bei Unterbruch
+7. **✓ Erledigt** wenn Route abgeschlossen
 
 ---
 
-## Routen anpassen
+## Features
 
-### Eigene Koordinaten eintragen
-`install.php` vor der Installation öffnen und das `$sampleRoutes`-Array anpassen.
-
-Koordinaten bekommst du einfach von:
-- https://geojson.io (Linie zeichnen → Koordinaten kopieren)
-- Google Maps → Rechtsklick → "Was ist hier?" → Koordinaten kopieren
-
-### Per Browser-URL neue Route hinzufügen
-```
-POST https://deine-domain.de/api.php?action=route_add
-Content-Type: application/json
-
-{
-  "name": "Meine neue Route",
-  "color": "#ffd700",
-  "coordinates": [
-    [47.3769, 8.5417],
-    [47.3850, 8.5350]
-  ]
-}
-```
+- 🗺 **OpenStreetMap** – keine API-Keys nötig
+- 📍 **Live GPS** – Browser sendet Position automatisch
+- 🚛 **Alle Fahrzeuge** – sieht man in Echtzeit auf der Karte
+- 📦 **Mehrere Sammlungen** – pro Datum, z.B. Morgen/Nachmittag
+- 🗺 **Routen-Vorlagen** – einmal erstellen, mehrfach verwenden
+- 👥 **Admin/User** – getrennte Rollen
+- ⏸ **Pause** – Route als unterbrochen markieren
+- 📊 **Fortschritt** – automatisch per GPS oder manuell
 
 ---
 
-## Dateien Übersicht
+## Rollen
 
-| Datei | Zweck |
-|-------|-------|
-| `config.php` | Datenbankzugangsdaten |
-| `db.php` | Datenbankverbindung + Hilfsfunktionen |
-| `api.php` | Alle API-Endpunkte |
-| `install.php` | Einmalig ausführen, dann löschen |
-| `index.html` | Die Webapp (Frontend) |
+| Rolle | Kann |
+|-------|------|
+| **Admin** | Sammlungen erstellen/verwalten, Routen erstellen, Benutzer verwalten, alles was User kann |
+| **User** | Karte sehen, Fahrzeug verbinden, Route starten/pausieren/abschliessen |
 
 ---
 
-## Wie es funktioniert (kein Node.js nötig)
+## Tipps
 
-Statt WebSockets pollt der Browser alle **2.5 Sekunden** die PHP-API:
-```
-Browser → GET api.php?action=state → PHP liest MySQL → JSON zurück
-```
+**GPS funktioniert nicht?**
+→ Seite muss über HTTPS aufgerufen werden
+→ Let's Encrypt SSL in Plesk aktivieren (kostenlos)
 
-Aktionen (Route starten, Pause, etc.) werden sofort per POST gesendet.
-Alle Fahrzeuge sehen Änderungen beim nächsten Poll-Intervall.
+**Karte lädt nicht?**
+→ Internetverbindung prüfen (Leaflet kommt vom CDN)
 
----
+**Koordinaten für Routen**
+→ https://geojson.io – Route zeichnen, dann in Admin übertragen
+→ Oder direkt im Admin-Panel auf die Karte klicken
 
-## Troubleshooting
-
-**Weisse Seite / PHP-Fehler:**
-- PHP-Version prüfen: mindestens PHP 7.4 (Plesk: PHP-Einstellungen)
-- Fehlerlog in Plesk prüfen
-
-**"Datenbankfehler":**
-- Zugangsdaten in `config.php` nochmal prüfen
-- Im Netcup Plesk: Datenbank → Benutzer hat Rechte auf die DB?
-
-**GPS funktioniert nicht:**
-- Seite muss über **HTTPS** aufgerufen werden (GPS nur mit SSL)
-- Netcup bietet kostenloses Let's Encrypt SSL im Plesk
-
-**Karte lädt nicht:**
-- Internetverbindung prüfen (Leaflet wird von CDN geladen)
+**Routen importieren**
+→ Im Admin: Vorlage erstellen → In Sammlung: Vorlage aus Dropdown wählen → automatisch übernommen

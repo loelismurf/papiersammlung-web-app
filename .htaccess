@@ -1,0 +1,25 @@
+# ── Sicherheit ────────────────────────────────────────────────────────────────
+# config.php und db.php vor direktem Zugriff schützen
+<Files "config.php">
+    Order Allow,Deny
+    Deny from all
+</Files>
+<Files "db.php">
+    Order Allow,Deny
+    Deny from all
+</Files>
+<Files "auth.php">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# ── Redirects ─────────────────────────────────────────────────────────────────
+# Alte index.html auf index.php umleiten
+Redirect 301 /index.html /index.php
+
+# Root → index.php
+DirectoryIndex index.php login.php
+
+# ── PHP Fehler ausblenden (Produktion) ────────────────────────────────────────
+php_flag display_errors Off
+php_flag log_errors On

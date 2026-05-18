@@ -4,7 +4,7 @@ require_once __DIR__ . '/config.php';
 function db(): PDO {
     static $pdo = null;
     if ($pdo === null) {
-        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
+        $dsn = "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=".DB_CHARSET;
         $pdo = new PDO($dsn, DB_USER, DB_PASS, [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -14,12 +14,29 @@ function db(): PDO {
     return $pdo;
 }
 
+function db_row(string $sql, array $params = []): ?array {
+    $s = db()->prepare($sql); $s->execute($params);
+    $r = $s->fetch(); return $r ?: null;
+}
+
+function db_rows(string $sql, array $params = []): array {
+    $s = db()->prepare($sql); $s->execute($params);
+    return $s->fetchAll();
+}
+
+function db_run(string $sql, array $params = []): void {
+    db()->prepare($sql)->execute($params);
+}
+
+function db_val(string $sql, array $params = []) {
+    $s = db()->prepare($sql); $s->execute($params);
+    return $s->fetchColumn();
+}
+
 function json_response(array $data, int $status = 200): void {
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
-    header('Access-Control-Allow-Origin: *');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE);
-    exit;
+    echo json_encode($data, JSON_UNESCAPED_UNICODE); exit;
 }
 
 function error_response(string $msg, int $status = 400): void {
@@ -27,27 +44,25 @@ function error_response(string $msg, int $status = 400): void {
 }
 
 function body(): array {
-    $raw = file_get_contents('php://input');
-    return json_decode($raw, true) ?? [];
+    return json_decode(file_get_contents('php://input'), true) ?? [];
 }
 
-// Stale Fahrzeuge bereinigen
+function new_id(): string {
+    return bin2hex(random_bytes(8));
+}
+
 function cleanup_vehicles(): void {
-    db()->prepare("
-        UPDATE vehicles SET status = 'offline'
-        WHERE last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND)
-        AND status != 'offline'
-    ")->execute([VEHICLE_TIMEOUT]);
+    db_run("UPDATE vehicles SET status='offline'
+            WHERE last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND) AND status!='offline'",
+           [VEHICLE_TIMEOUT]);
 }
 
-// Fortschritt berechnen: nächsten Routenpunkt per Euklidischer Distanz
 function calculate_progress(float $lat, float $lng, array $coords): int {
-    if (empty($coords)) return 0;
-    $closest = 0;
-    $minDist = PHP_FLOAT_MAX;
-    foreach ($coords as $i => $point) {
-        $d = hypot($point[0] - $lat, $point[1] - $lng);
+    if (count($coords) < 2) return 0;
+    $closest = 0; $minDist = PHP_FLOAT_MAX;
+    foreach ($coords as $i => $p) {
+        $d = hypot($p[0]-$lat, $p[1]-$lng);
         if ($d < $minDist) { $minDist = $d; $closest = $i; }
     }
-    return (int) round(($closest / (count($coords) - 1)) * 100);
+    return (int)round($closest / (count($coords)-1) * 100);
 }
