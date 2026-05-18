@@ -1,9 +1,9 @@
 <?php
 // ─── Datenbankzugangsdaten ─────────────────────────────────────────────────
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'dein_dbname');
-define('DB_USER', 'dein_dbuser');
-define('DB_PASS', 'dein_passwort');
+define('DB_HOST', '10.35.47.103:3306');       // meistens localhost
+define('DB_NAME', 'k82299_papiersammlung');     // Datenbankname
+define('DB_USER', 'k82299_papiersammlung');     // Datenbankbenutzer
+define('DB_PASS', '7NpFrRhycO2cb7K3Cfkb');   // Datenbankpasswort
 define('DB_CHARSET', 'utf8mb4');
 
 // ─── App-Einstellungen ─────────────────────────────────────────────────────
