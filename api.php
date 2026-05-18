@@ -6,10 +6,8 @@ require_once __DIR__ . '/auth.php';
 header('Content-Type: application/json; charset=utf-8');
 $action = $_GET['action'] ?? '';
 
-// Public endpoint
-if ($action === 'ping') { json_response(['ok'=>true]); }
+if ($action === 'ping') { json_response(['ok' => true]); }
 
-// All other endpoints require login
 if (!isset($_SESSION['user_id'])) { error_response('Nicht eingeloggt', 401); }
 
 $admin   = is_admin();
@@ -24,7 +22,7 @@ try {
     // ── STATE ────────────────────────────────────────────────────────────────
     case 'state':
         $cid = $_GET['collection_id'] ?? ($data['collection_id'] ?? '');
-        if (!$cid) { json_response(['routes'=>[],'vehicles'=>[]]); }
+        if (!$cid) { json_response(['routes' => [], 'vehicles' => []]); }
 
         $routes = db_rows("SELECT * FROM collection_routes WHERE collection_id=? ORDER BY sort_order,name", [$cid]);
         foreach ($routes as &$r) {
@@ -32,31 +30,24 @@ try {
             $r['visible']     = (bool)$r['visible'];
             $r['progress']    = (int)$r['progress'];
         }
-
-        $vehicles = db_rows("
-            SELECT * FROM vehicles
-            WHERE status!='offline'
-            AND active_collection_id=?
+        $vehicles = db_rows("SELECT * FROM vehicles
+            WHERE status != 'offline' AND active_collection_id = ?
             AND last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)",
             [$cid, VEHICLE_TIMEOUT]);
         foreach ($vehicles as &$v) {
             $v['lat'] = $v['lat'] !== null ? (float)$v['lat'] : null;
             $v['lng'] = $v['lng'] !== null ? (float)$v['lng'] : null;
         }
+        json_response(['routes' => $routes, 'vehicles' => $vehicles]);
 
-        json_response(['routes'=>$routes, 'vehicles'=>$vehicles]);
-
-    // ── ACTIVE COLLECTIONS ───────────────────────────────────────────────────
+    // ── COLLECTIONS ──────────────────────────────────────────────────────────
     case 'collections_active':
-        $rows = db_rows("SELECT id,name,collection_date FROM collections WHERE status='active' ORDER BY collection_date DESC");
-        json_response($rows);
+        json_response(db_rows("SELECT id,name,collection_date,status FROM collections WHERE status='active' ORDER BY collection_date DESC"));
 
     case 'collections_all':
         if (!$admin) error_response('Kein Zugriff', 403);
-        $rows = db_rows("
-            SELECT c.*, COUNT(cr.id) as route_count
-            FROM collections c
-            LEFT JOIN collection_routes cr ON cr.collection_id=c.id
+        $rows = db_rows("SELECT c.*, COUNT(cr.id) as route_count
+            FROM collections c LEFT JOIN collection_routes cr ON cr.collection_id=c.id
             GROUP BY c.id ORDER BY c.collection_date DESC");
         json_response($rows);
 
@@ -67,7 +58,7 @@ try {
         if (!$name || !$date) error_response('Name und Datum erforderlich');
         $id = new_id();
         db_run("INSERT INTO collections (id,name,collection_date) VALUES (?,?,?)", [$id,$name,$date]);
-        json_response(['ok'=>true,'id'=>$id]);
+        json_response(['ok' => true, 'id' => $id]);
 
     case 'collection_update':
         if (!$admin) error_response('Kein Zugriff', 403);
@@ -76,12 +67,11 @@ try {
         $date   = $data['date'] ?? '';
         $status = $data['status'] ?? '';
         if (!$id) error_response('ID fehlt');
-        if ($name) db_run("UPDATE collections SET name=? WHERE id=?", [$name,$id]);
-        if ($date) db_run("UPDATE collections SET collection_date=? WHERE id=?", [$date,$id]);
-        if ($status && in_array($status,['draft','active','completed'])) {
+        if ($name)   db_run("UPDATE collections SET name=? WHERE id=?", [$name,$id]);
+        if ($date)   db_run("UPDATE collections SET collection_date=? WHERE id=?", [$date,$id]);
+        if ($status && in_array($status, ['draft','active','completed']))
             db_run("UPDATE collections SET status=? WHERE id=?", [$status,$id]);
-        }
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     case 'collection_delete':
         if (!$admin) error_response('Kein Zugriff', 403);
@@ -89,23 +79,34 @@ try {
         if (!$id) error_response('ID fehlt');
         db_run("DELETE FROM collection_routes WHERE collection_id=?", [$id]);
         db_run("DELETE FROM collections WHERE id=?", [$id]);
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     // ── COLLECTION ROUTES ────────────────────────────────────────────────────
+    case 'col_routes_list':
+        if (!$admin) error_response('Kein Zugriff', 403);
+        $cid  = $_GET['collection_id'] ?? '';
+        $rows = db_rows("SELECT cr.*, rt.name as template_name
+            FROM collection_routes cr LEFT JOIN route_templates rt ON rt.id=cr.template_id
+            WHERE cr.collection_id=? ORDER BY cr.sort_order,cr.name", [$cid]);
+        foreach ($rows as &$r) {
+            $r['coordinates'] = json_decode($r['coordinates'], true);
+            $r['visible']     = (bool)$r['visible'];
+        }
+        json_response($rows);
+
     case 'col_route_add':
         if (!$admin) error_response('Kein Zugriff', 403);
         $cid    = $data['collection_id'] ?? '';
         $name   = trim($data['name'] ?? '');
         $color  = $data['color'] ?? '#00d4ff';
         $coords = $data['coordinates'] ?? [];
-        $tid    = $data['template_id'] ?? null;
+        $tid    = $data['template_id'] ?: null;
         if (!$cid || !$name || empty($coords)) error_response('Pflichtfelder fehlen');
-        $id = new_id();
-        $sort = (int)db_val("SELECT COUNT(*) FROM collection_routes WHERE collection_id=?",[$cid]);
+        $id   = new_id();
+        $sort = (int)db_val("SELECT COUNT(*) FROM collection_routes WHERE collection_id=?", [$cid]);
         db_run("INSERT INTO collection_routes (id,collection_id,template_id,name,color,coordinates,sort_order)
-                VALUES (?,?,?,?,?,?,?)",
-               [$id,$cid,$tid,$name,$color,json_encode($coords),$sort]);
-        json_response(['ok'=>true,'id'=>$id]);
+                VALUES (?,?,?,?,?,?,?)", [$id,$cid,$tid,$name,$color,json_encode($coords),$sort]);
+        json_response(['ok' => true, 'id' => $id]);
 
     case 'col_route_delete':
         if (!$admin) error_response('Kein Zugriff', 403);
@@ -113,30 +114,17 @@ try {
         if (!$id) error_response('ID fehlt');
         db_run("UPDATE vehicles SET active_route_id=NULL WHERE active_route_id=?", [$id]);
         db_run("DELETE FROM collection_routes WHERE id=?", [$id]);
-        json_response(['ok'=>true]);
-
-    case 'col_routes_list':
-        if (!$admin) error_response('Kein Zugriff', 403);
-        $cid = $_GET['collection_id'] ?? '';
-        $rows = db_rows("SELECT cr.*,rt.name as template_name FROM collection_routes cr
-                         LEFT JOIN route_templates rt ON rt.id=cr.template_id
-                         WHERE cr.collection_id=? ORDER BY cr.sort_order,cr.name", [$cid]);
-        foreach ($rows as &$r) {
-            $r['coordinates'] = json_decode($r['coordinates'], true);
-            $r['visible']     = (bool)$r['visible'];
-        }
-        json_response($rows);
+        json_response(['ok' => true]);
 
     // ── ROUTE TEMPLATES ──────────────────────────────────────────────────────
     case 'templates_list':
         $rows = db_rows("SELECT id,name,color,description,created_at,
-                         JSON_LENGTH(coordinates) as point_count
-                         FROM route_templates ORDER BY name");
+            JSON_LENGTH(coordinates) as point_count FROM route_templates ORDER BY name");
         json_response($rows);
 
     case 'template_detail':
         $id = $_GET['id'] ?? '';
-        $r = db_row("SELECT * FROM route_templates WHERE id=?", [$id]);
+        $r  = db_row("SELECT * FROM route_templates WHERE id=?", [$id]);
         if (!$r) error_response('Nicht gefunden', 404);
         $r['coordinates'] = json_decode($r['coordinates'], true);
         json_response($r);
@@ -151,7 +139,7 @@ try {
         $id = new_id();
         db_run("INSERT INTO route_templates (id,name,color,coordinates,description) VALUES (?,?,?,?,?)",
                [$id,$name,$color,json_encode($coords),$desc]);
-        json_response(['ok'=>true,'id'=>$id]);
+        json_response(['ok' => true, 'id' => $id]);
 
     case 'template_update':
         if (!$admin) error_response('Kein Zugriff', 403);
@@ -164,15 +152,15 @@ try {
         if ($name)   db_run("UPDATE route_templates SET name=? WHERE id=?", [$name,$id]);
         if ($color)  db_run("UPDATE route_templates SET color=? WHERE id=?", [$color,$id]);
         if ($coords) db_run("UPDATE route_templates SET coordinates=? WHERE id=?", [json_encode($coords),$id]);
-        if ($desc!==null) db_run("UPDATE route_templates SET description=? WHERE id=?", [$desc,$id]);
-        json_response(['ok'=>true]);
+        if ($desc !== null) db_run("UPDATE route_templates SET description=? WHERE id=?", [$desc,$id]);
+        json_response(['ok' => true]);
 
     case 'template_delete':
         if (!$admin) error_response('Kein Zugriff', 403);
         $id = $data['id'] ?? '';
         if (!$id) error_response('ID fehlt');
         db_run("DELETE FROM route_templates WHERE id=?", [$id]);
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     // ── USERS ────────────────────────────────────────────────────────────────
     case 'users_list':
@@ -183,30 +171,30 @@ try {
         if (!$admin) error_response('Kein Zugriff', 403);
         $uname = trim($data['username'] ?? '');
         $pass  = $data['password'] ?? '';
-        $role  = in_array($data['role']??'',['admin','user']) ? $data['role'] : 'user';
+        $role  = in_array($data['role'] ?? '', ['admin','user']) ? $data['role'] : 'user';
         if (!$uname || !$pass) error_response('Benutzername und Passwort erforderlich');
-        if (strlen($pass) < 6) error_response('Passwort mindestens 6 Zeichen');
-        $exists = db_val("SELECT COUNT(*) FROM users WHERE username=?", [$uname]);
-        if ($exists) error_response('Benutzername bereits vergeben');
-        $hash = password_hash($pass, PASSWORD_DEFAULT);
-        db_run("INSERT INTO users (username,password_hash,role) VALUES (?,?,?)", [$uname,$hash,$role]);
-        json_response(['ok'=>true]);
+        if (strlen($pass) < 6)  error_response('Passwort mindestens 6 Zeichen');
+        if (db_val("SELECT COUNT(*) FROM users WHERE username=?", [$uname]))
+            error_response('Benutzername bereits vergeben');
+        db_run("INSERT INTO users (username,password_hash,role) VALUES (?,?,?)",
+               [$uname, password_hash($pass, PASSWORD_DEFAULT), $role]);
+        json_response(['ok' => true]);
 
     case 'user_delete':
         if (!$admin) error_response('Kein Zugriff', 403);
         $id = (int)($data['id'] ?? 0);
-        if ($id === $user_id) error_response('Eigenen Account kann man nicht löschen');
+        if ($id === $user_id) error_response('Eigenen Account nicht löschbar');
         db_run("DELETE FROM users WHERE id=?", [$id]);
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     case 'user_change_password':
         $id   = (int)($data['id'] ?? 0);
         $pass = $data['password'] ?? '';
-        // Admin kann alle ändern; User nur sich selbst
         if (!$admin && $id !== $user_id) error_response('Kein Zugriff', 403);
         if (strlen($pass) < 6) error_response('Passwort mindestens 6 Zeichen');
-        db_run("UPDATE users SET password_hash=? WHERE id=?", [password_hash($pass,PASSWORD_DEFAULT),$id]);
-        json_response(['ok'=>true]);
+        db_run("UPDATE users SET password_hash=? WHERE id=?",
+               [password_hash($pass, PASSWORD_DEFAULT), $id]);
+        json_response(['ok' => true]);
 
     // ── VEHICLE ──────────────────────────────────────────────────────────────
     case 'vehicle_join':
@@ -217,9 +205,11 @@ try {
         if (!$token || strlen($token) < 20) $token = bin2hex(random_bytes(32));
         db_run("INSERT INTO vehicles (token,name,user_id,status,active_collection_id,last_seen)
                 VALUES (?,?,?,'idle',?,NOW())
-                ON DUPLICATE KEY UPDATE name=?,user_id=?,status='idle',active_collection_id=?,last_seen=NOW()",
-               [$token,$name,$user_id,$cid,$name,$user_id,$cid]);
-        json_response(['token'=>$token,'name'=>$name,'status'=>'idle']);
+                ON DUPLICATE KEY UPDATE
+                  name=VALUES(name), user_id=VALUES(user_id),
+                  status='idle', active_collection_id=VALUES(active_collection_id), last_seen=NOW()",
+               [$token, $name, $user_id, $cid]);
+        json_response(['token' => $token, 'name' => $name, 'status' => 'idle']);
 
     case 'vehicle_position':
         $token = $data['token'] ?? '';
@@ -227,9 +217,8 @@ try {
         $lng   = (float)($data['lng'] ?? 0);
         if (!$token) error_response('Token fehlt');
         db_run("UPDATE vehicles SET lat=?,lng=?,last_seen=NOW() WHERE token=?", [$lat,$lng,$token]);
-        // Update progress
         $v = db_row("SELECT * FROM vehicles WHERE token=?", [$token]);
-        if ($v && $v['active_route_id'] && $v['status']==='driving') {
+        if ($v && $v['active_route_id'] && $v['status'] === 'driving') {
             $r = db_row("SELECT * FROM collection_routes WHERE id=?", [$v['active_route_id']]);
             if ($r) {
                 $coords   = json_decode($r['coordinates'], true);
@@ -242,23 +231,22 @@ try {
                 }
             }
         }
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     case 'route_start':
         $token = $data['token'] ?? '';
         $rid   = $data['route_id'] ?? '';
         if (!$token || !$rid) error_response('Parameter fehlen');
         $v = db_row("SELECT * FROM vehicles WHERE token=?", [$token]);
-        if ($v && $v['active_route_id']) {
+        if ($v && $v['active_route_id'])
             db_run("UPDATE collection_routes SET status='pending',assigned_token=NULL WHERE id=? AND status='active'",
                    [$v['active_route_id']]);
-        }
         $route = db_row("SELECT * FROM collection_routes WHERE id=?", [$rid]);
         if (!$route) error_response('Route nicht gefunden');
         db_run("UPDATE collection_routes SET status='active',assigned_token=? WHERE id=?", [$token,$rid]);
         db_run("UPDATE vehicles SET status='driving',active_route_id=?,active_collection_id=?,last_seen=NOW() WHERE token=?",
                [$rid,$route['collection_id'],$token]);
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     case 'route_pause':
         $token = $data['token'] ?? '';
@@ -266,7 +254,7 @@ try {
         if (!$rid) error_response('route_id fehlt');
         db_run("UPDATE collection_routes SET status='paused' WHERE id=?", [$rid]);
         if ($token) db_run("UPDATE vehicles SET status='paused',last_seen=NOW() WHERE token=?", [$token]);
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     case 'route_resume':
         $token = $data['token'] ?? '';
@@ -274,7 +262,7 @@ try {
         if (!$rid) error_response('route_id fehlt');
         db_run("UPDATE collection_routes SET status='active' WHERE id=?", [$rid]);
         if ($token) db_run("UPDATE vehicles SET status='driving',active_route_id=?,last_seen=NOW() WHERE token=?", [$rid,$token]);
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     case 'route_complete':
         $token = $data['token'] ?? '';
@@ -282,7 +270,7 @@ try {
         if (!$rid) error_response('route_id fehlt');
         db_run("UPDATE collection_routes SET status='completed',progress=100 WHERE id=?", [$rid]);
         if ($token) db_run("UPDATE vehicles SET status='idle',active_route_id=NULL,last_seen=NOW() WHERE token=?", [$token]);
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     case 'route_reset':
         if (!$admin) error_response('Kein Zugriff', 403);
@@ -290,20 +278,21 @@ try {
         if (!$rid) error_response('route_id fehlt');
         db_run("UPDATE vehicles SET status='idle',active_route_id=NULL WHERE active_route_id=?", [$rid]);
         db_run("UPDATE collection_routes SET status='pending',progress=0,assigned_token=NULL WHERE id=?", [$rid]);
-        json_response(['ok'=>true]);
+        json_response(['ok' => true]);
 
     case 'route_toggle':
         if (!$admin) error_response('Kein Zugriff', 403);
         $rid = $data['route_id'] ?? '';
         if (!$rid) error_response('route_id fehlt');
-        db_run("UPDATE collection_routes SET visible=NOT visible WHERE id=?", [$rid]);
-        json_response(['ok'=>true]);
+        db_run("UPDATE collection_routes SET visible = NOT visible WHERE id=?", [$rid]);
+        json_response(['ok' => true]);
 
     default:
-        error_response('Unbekannte Aktion: '.htmlspecialchars($action), 404);
+        error_response('Unbekannte Aktion: ' . htmlspecialchars($action), 404);
     }
+
 } catch (PDOException $e) {
-    error_response('DB-Fehler: '.$e->getMessage(), 500);
+    error_response('DB-Fehler: ' . $e->getMessage(), 500);
 } catch (Exception $e) {
-    error_response('Fehler: '.$e->getMessage(), 500);
+    error_response('Fehler: ' . $e->getMessage(), 500);
 }

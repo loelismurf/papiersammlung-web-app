@@ -1,5 +1,4 @@
-# ── Sicherheit ────────────────────────────────────────────────────────────────
-# config.php und db.php vor direktem Zugriff schützen
+# Sicherheit: config/db/auth vor direktem Zugriff schützen
 <Files "config.php">
     Order Allow,Deny
     Deny from all
@@ -13,13 +12,18 @@
     Deny from all
 </Files>
 
-# ── Redirects ─────────────────────────────────────────────────────────────────
-# Alte index.html auf index.php umleiten
-Redirect 301 /index.html /index.php
+# tmp-Ordner komplett sperren
+<Directory "tmp">
+    Order Allow,Deny
+    Deny from all
+</Directory>
 
-# Root → index.php
+# Startseite
 DirectoryIndex index.php login.php
 
-# ── PHP Fehler ausblenden (Produktion) ────────────────────────────────────────
+# Alte index.html weiterleiten
+RedirectMatch 301 ^/index\.html$ /index.php
+
+# PHP Fehler verstecken
 php_flag display_errors Off
 php_flag log_errors On

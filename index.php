@@ -65,11 +65,9 @@ select:focus{border-color:var(--accent)}
 .btn.g{border-color:var(--green);color:var(--green)}.btn.g:hover{background:var(--green);color:var(--bg)}
 .btn.d{border-color:var(--orange);color:var(--orange)}.btn.d:hover{background:var(--orange);color:var(--bg)}
 .btn.s{padding:4px 8px;font-size:10px}
-
-/* KEY FIX: map uses absolute positioning so it always fills container */
+/* KEY FIX: map fills container correctly */
 #mc{flex:1;position:relative;min-width:0}
 #map{position:absolute;top:0;left:0;right:0;bottom:0}
-
 #topbar{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;z-index:500;pointer-events:none}
 .mb{background:rgba(10,12,15,.88);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:7px 12px;font-size:11px;font-family:var(--font-mono);pointer-events:auto}
 .mb .ml{color:var(--muted);font-size:9px;letter-spacing:2px;text-transform:uppercase}
@@ -98,7 +96,7 @@ select:focus{border-color:var(--accent)}
   <div id="hdr">
     <div class="logo">♻ Papier<span>sammlung</span></div>
     <?php if($is_admin): ?><a class="btn s p" href="admin.php">Admin</a><?php endif; ?>
-    <a class="btn s" href="logout.php" title="Abmelden (<?=htmlspecialchars($username)?>)">🚪 <?=htmlspecialchars($username)?></a>
+    <a class="btn s" href="logout.php" title="Abmelden">🚪 <?=htmlspecialchars($username)?></a>
   </div>
   <div id="col-box">
     <div class="lbl">Sammlung</div>
@@ -142,7 +140,7 @@ select:focus{border-color:var(--accent)}
   <div id="no-coll">
     <div class="big">📦</div>
     <p>Keine aktive Sammlung vorhanden.<br>
-    <?php if($is_admin): ?><a href="admin.php" style="color:var(--accent)">→ Im Admin-Panel erstellen und aktivieren</a><?php else: ?>Bitte den Admin kontaktieren.<?php endif; ?></p>
+    <?php if($is_admin): ?><a href="admin.php" style="color:var(--accent)">→ Im Admin-Panel erstellen</a><?php else: ?>Bitte Admin kontaktieren.<?php endif; ?></p>
   </div>
   <div id="pi"><div class="pd" id="pd"></div><span id="pt">Verbinde...</span></div>
 </div>
@@ -169,7 +167,9 @@ L.control.zoom({ position:'bottomleft' }).addTo(map);
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(action, body={}) {
   try {
-    const r = await fetch(`${API}?action=${action}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    const r = await fetch(`${API}?action=${action}`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    });
     return await r.json();
   } catch(e) { return {error:e.message}; }
 }
@@ -198,9 +198,9 @@ async function loadCollections() {
   const saved = localStorage.getItem('ps_col');
   if (saved && cols.find(c=>c.id===saved)) sel.value = saved;
   currentColId = sel.value || cols[0].id;
-  sel.value    = currentColId;
+  sel.value = currentColId;
   startPolling();
-  // Auto-reconnect AFTER currentColId is set
+  // Auto-reconnect NACH dem currentColId gesetzt ist
   if (myToken && myName) {
     const r = await api('vehicle_join', {name:myName, token:myToken, collection_id:currentColId});
     if (!r.error) {
@@ -226,7 +226,7 @@ document.getElementById('col-select').addEventListener('change', function() {
 });
 
 // ── Polling ───────────────────────────────────────────────────────────────────
-let pollTimer=null;
+let pollTimer = null;
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollState();
@@ -247,7 +247,7 @@ async function pollState() {
     } else {
       document.getElementById('pt').textContent = 'API Fehler';
     }
-  } catch(e) { document.getElementById('pt').textContent = 'Verbindungsfehler'; }
+  } catch(e) { document.getElementById('pt').textContent = 'Fehler'; }
   setTimeout(()=>pd.classList.remove('on'), 400);
 }
 
@@ -270,6 +270,7 @@ async function joinVehicle() {
   document.getElementById('disp-vname').textContent=myName;
   setMyStatus('idle'); notify(`${myName} verbunden`,'g'); startGPS();
 }
+
 function setMyStatus(s) {
   const el=document.getElementById('disp-vs');
   el.className=`vs ${s}`;
@@ -279,10 +280,12 @@ function setMyStatus(s) {
 // ── GPS ───────────────────────────────────────────────────────────────────────
 let gpsInit=false;
 function startGPS() {
-  if (!navigator.geolocation) { document.getElementById('gps-txt').textContent='GPS nicht verfügbar'; return; }
+  if (!navigator.geolocation) {
+    document.getElementById('gps-txt').textContent='GPS nicht verfügbar'; return;
+  }
   if (location.protocol !== 'https:') {
     document.getElementById('gps-warn').style.display='block';
-    document.getElementById('gps-txt').textContent='⚠ Kein HTTPS – GPS gesperrt'; return;
+    document.getElementById('gps-txt').textContent='⚠ Kein HTTPS'; return;
   }
   navigator.geolocation.watchPosition(
     pos => {
@@ -293,7 +296,7 @@ function startGPS() {
       if (!gpsInit) { map.setView([lat,lng],15); gpsInit=true; }
     },
     err => {
-      const msgs={1:'GPS verweigert – in Browser-Einstellungen erlauben',2:'Position nicht verfügbar',3:'GPS Timeout'};
+      const msgs={1:'GPS verweigert – Berechtigung erlauben',2:'Position nicht verfügbar',3:'GPS Timeout'};
       document.getElementById('gps-txt').textContent=msgs[err.code]||err.message;
       if (err.code===1) document.getElementById('gps-warn').style.display='block';
     },
@@ -319,11 +322,12 @@ function renderRoutes() {
       const ei=Math.floor((route.coordinates.length-1)*route.progress/100);
       layers.push(L.polyline(route.coordinates.slice(0,ei+1),{color:c,weight:w+2,opacity:1,lineCap:'round'}));
     }
-    const f=route.coordinates[0], l=route.coordinates[route.coordinates.length-1];
+    const f=route.coordinates[0], la=route.coordinates[route.coordinates.length-1];
     layers.push(L.circleMarker(f,{radius:6,fillColor:c,color:'#fff',weight:2,fillOpacity:1,opacity:1}));
-    layers.push(L.circleMarker(l,{radius:6,fillColor:route.status==='completed'?'#888':c,color:'#fff',weight:2,fillOpacity:1,opacity:1}));
+    layers.push(L.circleMarker(la,{radius:6,fillColor:route.status==='completed'?'#888':c,color:'#fff',weight:2,fillOpacity:1,opacity:1}));
     layers.forEach(l=>l.addTo(map));
-    line.bindTooltip(`<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,{permanent:false,direction:'top',className:'rtt'});
+    line.bindTooltip(`<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,
+      {permanent:false,direction:'top',className:'rtt'});
     routeLayers[route.id]=layers;
   });
 }
@@ -337,31 +341,38 @@ function renderVehicleMarkers() {
     const icon=L.divIcon({className:'',
       html:`<div style="width:${sz}px;height:${sz}px;background:${col};border:2px solid ${self?'#fff':'rgba(255,255,255,.6)'};border-radius:50%;box-shadow:0 0 ${self?10:6}px ${col}"></div>`,
       iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
-    if (vehicleMarkers[v.token]) { vehicleMarkers[v.token].setLatLng([v.lat,v.lng]); vehicleMarkers[v.token].setIcon(icon); }
-    else {
+    if (vehicleMarkers[v.token]) {
+      vehicleMarkers[v.token].setLatLng([v.lat,v.lng]); vehicleMarkers[v.token].setIcon(icon);
+    } else {
       vehicleMarkers[v.token]=L.marker([v.lat,v.lng],{icon}).addTo(map)
-        .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`,{permanent:self,direction:'top',offset:[0,-10],className:'rtt'});
+        .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`,
+          {permanent:self,direction:'top',offset:[0,-10],className:'rtt'});
     }
   });
 }
 
 function renderRouteList() {
   const c=document.getElementById('route-list'); c.innerHTML='';
-  if (!routes.length) { c.innerHTML='<p style="color:var(--muted);font-size:12px;font-family:var(--font-mono);padding:4px">Keine Routen</p>'; return; }
+  if (!routes.length) {
+    c.innerHTML='<p style="color:var(--muted);font-size:12px;font-family:var(--font-mono);padding:4px">Keine Routen</p>'; return;
+  }
   routes.forEach(route=>{
     const isMe=route.assigned_token===myToken;
     const av=vehicles.find(v=>v.token===route.assigned_token);
     const card=document.createElement('div');
-    // ── FIXED: correct ternary, no .join() ──
-    card.className = 'rc' + (route.visible ? '' : ' hidden-r');
+    card.className='rc'+(route.visible?'':' hidden-r');  // FIXED
     card.style.setProperty('--rc',route.color);
     let acts='';
     acts+=`<button class="btn s btn-foc">🔍 Fokus</button>`;
     acts+=`<button class="btn s btn-tog">${route.visible?'Ausblenden':'Einblenden'}</button>`;
-    if (isJoined&&route.status==='pending') acts+=`<button class="btn s g btn-start">▶ Start</button>`;
-    if (isJoined&&isMe&&route.status==='active') acts+=`<button class="btn s d btn-pause">⏸ Pause</button><button class="btn s g btn-done">✓ Erledigt</button>`;
-    if (isJoined&&isMe&&route.status==='paused') acts+=`<button class="btn s g btn-resume">▶ Weiter</button><button class="btn s g btn-done">✓ Erledigt</button>`;
-    if (IS_ADMIN&&(route.status==='completed'||route.status==='paused')) acts+=`<button class="btn s btn-reset">↺ Reset</button>`;
+    if (isJoined&&route.status==='pending')
+      acts+=`<button class="btn s g btn-start">▶ Start</button>`;
+    if (isJoined&&isMe&&route.status==='active')
+      acts+=`<button class="btn s d btn-pause">⏸ Pause</button><button class="btn s g btn-done">✓ Erledigt</button>`;
+    if (isJoined&&isMe&&route.status==='paused')
+      acts+=`<button class="btn s g btn-resume">▶ Weiter</button><button class="btn s g btn-done">✓ Erledigt</button>`;
+    if (IS_ADMIN&&(route.status==='completed'||route.status==='paused'))
+      acts+=`<button class="btn s btn-reset">↺ Reset</button>`;
     card.innerHTML=`
       <div class="rt"><span class="rn" style="color:${route.color}">${route.name}</span><span class="rb ${route.status}">${slabel(route.status)}</span></div>
       <div class="pb"><div class="pf" style="width:${route.progress}%;background:${route.color}"></div></div>
@@ -369,23 +380,27 @@ function renderRouteList() {
       <div class="ra">${acts}</div>`;
     c.appendChild(card);
     card.querySelector('.btn-foc')?.addEventListener('click',()=>{
-      if (route.coordinates.length) map.fitBounds(L.latLngBounds(route.coordinates),{padding:[40,40]});
+      if(route.coordinates.length) map.fitBounds(L.latLngBounds(route.coordinates),{padding:[40,40]});
     });
     card.querySelector('.btn-tog')?.addEventListener('click',async()=>{ await api('route_toggle',{route_id:route.id}); pollState(); });
     card.querySelector('.btn-start')?.addEventListener('click',async()=>{
-      if (!isJoined){notify('Bitte zuerst verbinden','w');return;}
+      if(!isJoined){notify('Bitte zuerst verbinden','w');return;}
       const r=await api('route_start',{token:myToken,route_id:route.id});
-      if (r.error){notify(r.error,'w');return;}
+      if(r.error){notify(r.error,'w');return;}
       myActiveRouteId=route.id; setMyStatus('driving'); pollState();
     });
-    card.querySelector('.btn-pause')?.addEventListener('click',async()=>{ await api('route_pause',{token:myToken,route_id:route.id}); setMyStatus('paused'); pollState(); });
-    card.querySelector('.btn-resume')?.addEventListener('click',async()=>{ await api('route_resume',{token:myToken,route_id:route.id}); myActiveRouteId=route.id; setMyStatus('driving'); pollState(); });
+    card.querySelector('.btn-pause')?.addEventListener('click',async()=>{
+      await api('route_pause',{token:myToken,route_id:route.id}); setMyStatus('paused'); pollState();
+    });
+    card.querySelector('.btn-resume')?.addEventListener('click',async()=>{
+      await api('route_resume',{token:myToken,route_id:route.id}); myActiveRouteId=route.id; setMyStatus('driving'); pollState();
+    });
     card.querySelector('.btn-done')?.addEventListener('click',async()=>{
       await api('route_complete',{token:myToken,route_id:route.id});
       myActiveRouteId=null; setMyStatus('idle'); notify(`${route.name} erledigt ✓`,'g'); pollState();
     });
     card.querySelector('.btn-reset')?.addEventListener('click',async()=>{
-      if(confirm(`${route.name} zurücksetzen?`)){await api('route_reset',{route_id:route.id});pollState();}
+      if(confirm(`${route.name} zurücksetzen?`)){await api('route_reset',{route_id:route.id}); pollState();}
     });
   });
 }
@@ -393,7 +408,7 @@ function renderRouteList() {
 function renderVehicleList() {
   const c=document.getElementById('veh-list');
   const rm=Object.fromEntries(routes.map(r=>[r.id,r.name]));
-  if (!vehicles.length){c.innerHTML='<span style="color:var(--muted);font-size:12px;font-family:var(--font-mono)">Keine Fahrzeuge</span>';return;}
+  if(!vehicles.length){c.innerHTML='<span style="color:var(--muted);font-size:12px;font-family:var(--font-mono)">Keine Fahrzeuge</span>';return;}
   c.innerHTML=vehicles.map(v=>`<div class="vi"><div class="vd ${v.status}"></div>
     <span style="font-weight:600;flex:1">${v.name}${v.token===myToken?' <small style="color:var(--accent)">(Ich)</small>':''}</span>
     <span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${v.active_route_id?(rm[v.active_route_id]||'—'):'—'}</span></div>`).join('');
