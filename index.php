@@ -349,7 +349,34 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
   navigator.serviceWorker.addEventListener('message',e=>{ if(e.data?.type==='REQUEST_GPS'&&myLat!==null&&isJoined) sendGPS(myLat,myLng); });
 }
-function sendGPS(lat,lng){ api('vehicle_position',{token:myToken,lat,lng,collection_id:currentColId}); }
+function sendGPS(lat, lng) {
+  const payload = {token:myToken, lat, lng, collection_id:currentColId};
+
+  // Gesnappte Strassenposition mitschicken wenn frisch im Cache vorhanden.
+  // Server nutzt sie für genaueren Segment-Check (10m Toleranz statt 20m).
+  const cached = vehicleSnap[myToken];
+  const fresh  = cached
+    && Math.abs(cached.srcLat - lat) < 0.0003  // ~30m
+    && Math.abs(cached.srcLng - lng) < 0.0003;
+  if (fresh) {
+    payload.snap_lat = cached.lat;
+    payload.snap_lng = cached.lng;
+  }
+
+  api('vehicle_position', payload);
+
+  // Snap im Hintergrund aktualisieren wenn Cache fehlt oder veraltet
+  if (!fresh) {
+    fetch(`${OSRM}/nearest/v1/driving/${lng},${lat}?number=1`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.code === 'Ok' && d.waypoints?.[0]) {
+          const [sLng, sLat] = d.waypoints[0].location;
+          vehicleSnap[myToken] = {srcLat:lat, srcLng:lng, lat:sLat, lng:sLng};
+        }
+      }).catch(() => {});
+  }
+}
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 const map=L.map('map',{center:[47.3769,8.5417],zoom:13,zoomControl:false});

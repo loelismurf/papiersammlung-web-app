@@ -186,7 +186,7 @@ try {
         $cid=$data['collection_id']??null;
         if (!$token) error_response('Token fehlt');
 
-        // Position aktualisieren
+        // Rohe GPS-Position speichern (für Anzeige auf Karte)
         if ($cid) {
             db_run("UPDATE vehicles SET lat=?,lng=?,active_collection_id=?,last_seen=NOW() WHERE token=?",[$lat,$lng,$cid,$token]);
         } else {
@@ -199,19 +199,26 @@ try {
             $r=db_row("SELECT * FROM collection_routes WHERE id=?",[$v['active_route_id']]);
             if ($r) {
                 $coords = json_decode($r['coordinates'], true);
-                $numSegs = count($coords) - 1;
 
                 // Gefahrene Segmente laden oder initialisieren
                 $driven = $r['driven_segments']
                     ? json_decode($r['driven_segments'], true)
                     : init_segments(count($coords));
 
-                // Segmente aktualisieren (5m Toleranz, jedes Segment einzeln)
-                $driven   = update_driven_segments($lat, $lng, $coords, $driven);
+                // Intelligenter Snap-Check:
+                // Client schickt snap_lat/snap_lng wenn er die Position bereits
+                // auf die nächste Strasse gesnapped hat (via OSRM).
+                // → Engere Toleranz möglich (10m), da GPS-Fehler durch Snap reduziert.
+                // Kein Snap vorhanden → rohe GPS, grosszügigere Toleranz (20m).
+                $hasSnap = isset($data['snap_lat'], $data['snap_lng']);
+                $checkLat = $hasSnap ? (float)$data['snap_lat'] : $lat;
+                $checkLng = $hasSnap ? (float)$data['snap_lng'] : $lng;
+                $tolerance = $hasSnap ? 10.0 : 20.0;
+
+                $driven   = update_driven_segments($checkLat, $checkLng, $coords, $driven, $tolerance);
                 $progress = progress_from_segments($driven);
 
                 if (all_segments_driven($driven)) {
-                    // Alle Segmente abgefahren → Route komplett
                     db_run("UPDATE collection_routes SET status='completed', progress=100, driven_segments=? WHERE id=?",
                            [json_encode($driven), $r['id']]);
                     db_run("UPDATE vehicles SET status='idle', active_route_id=NULL WHERE token=?", [$token]);
