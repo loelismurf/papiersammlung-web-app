@@ -329,8 +329,9 @@ function toggleAddRoute(){
 function getAddAllCoords(){
   if(!addSegments.length) return [];
   const all=[];
-  addSegments.forEach((seg,i)=>{ if(i===0) all.push(...seg); else all.push(...seg.slice(1)); });
-  return all;
+  addSegments.forEach(seg=>all.push(...seg));
+  // Duplikate an Segment-Übergängen entfernen (Strassenrouting verbindet Segmente)
+  return all.filter((p,i)=>i===0||p[0]!==all[i-1][0]||p[1]!==all[i-1][1]);
 }
 function updateAddPolyline(){
   if(addLine) addMap.removeLayer(addLine);
@@ -519,8 +520,9 @@ function toggleTplRoute(){
 function getTplAllCoords(){
   if(!tplSegments.length) return [];
   const all=[];
-  tplSegments.forEach((seg,i)=>{ if(i===0) all.push(...seg); else all.push(...seg.slice(1)); });
-  return all;
+  tplSegments.forEach(seg=>all.push(...seg));
+  // Duplikate an Segment-Übergängen entfernen
+  return all.filter((p,i)=>i===0||p[0]!==all[i-1][0]||p[1]!==all[i-1][1]);
 }
 function updateTplPolyline(){
   if(tplLine) tplMap.removeLayer(tplLine);
