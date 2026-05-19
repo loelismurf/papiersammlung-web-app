@@ -8,5 +8,5 @@ define('DB_CHARSET', 'utf8mb4');
 
 // ─── App-Einstellungen ─────────────────────────────────────────────────────
 define('APP_NAME',        'Papiersammlung');
-define('VEHICLE_TIMEOUT', 30);    // Sekunden bis Fahrzeug als offline gilt
-define('POLL_INTERVAL',   2500);  // Millisekunden zwischen Browser-Polls
+define('VEHICLE_TIMEOUT', 60);    // Sekunden bis Fahrzeug als offline gilt
+define('POLL_INTERVAL',   2000);  // Millisekunden zwischen Browser-Polls
