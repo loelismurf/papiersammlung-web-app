@@ -24,8 +24,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .logo span{color:var(--text)}
 .logo-sub{font-size:10px;color:var(--muted);letter-spacing:2px;font-family:var(--font-mono);margin-top:2px}
 #nav-links{flex:1;padding:8px 0}
-.nl{display:block;padding:10px 16px;font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;
-    color:var(--muted);cursor:pointer;transition:all .2s;border-left:3px solid transparent;text-decoration:none}
+.nl{display:block;padding:10px 16px;font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;transition:all .2s;border-left:3px solid transparent;text-decoration:none}
 .nl:hover{color:var(--text);background:rgba(255,255,255,.03)}
 .nl.active{color:var(--accent);border-left-color:var(--accent);background:rgba(0,212,255,.05)}
 .nl .ico{margin-right:8px}
@@ -63,6 +62,11 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:var(--r);back
 .badge.completed{background:#0a1a2a;color:var(--accent)}.badge.admin{background:#1a0a2a;color:var(--pink)}
 .badge.user{background:#1a2030;color:var(--muted)}.badge.pending{background:#1a2030;color:var(--muted)}
 .badge.paused{background:#2a1a08;color:var(--orange)}
+/* Snap-Toolbar */
+.snap-bar{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.snap-bar .btn.s.active-snap{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.1)}
+.snap-loading{font-size:12px;font-family:var(--font-mono);color:var(--yellow);display:none;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .map-ed{height:360px;border-radius:var(--r);border:1px solid var(--border2);overflow:hidden;margin-bottom:8px}
 .map-hint{font-size:11px;color:var(--muted);font-family:var(--font-mono);margin-bottom:6px}
 #col-detail{background:var(--panel2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-top:16px}
@@ -110,17 +114,14 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:var(--r);back
         <p class="text-muted" style="line-height:1.9">
           Mehrere Sammlungen pro Datum sind möglich.<br>
           <b style="color:var(--muted)">Entwurf</b> → nur Admins sehen sie.<br>
-          <b style="color:var(--green)">Aktiv</b> → alle Benutzer sehen sie.<br>
-          Routen aus Vorlagen importieren oder neu zeichnen.
+          <b style="color:var(--green)">Aktiv</b> → alle Benutzer sehen sie.
         </p>
       </div>
     </div>
     <div class="card">
       <h3>Alle Sammlungen</h3>
-      <table>
-        <thead><tr><th>Name</th><th>Datum</th><th>Status</th><th>Routen</th><th>Aktionen</th></tr></thead>
-        <tbody id="col-tbody"></tbody>
-      </table>
+      <table><thead><tr><th>Name</th><th>Datum</th><th>Status</th><th>Routen</th><th>Aktionen</th></tr></thead>
+      <tbody id="col-tbody"></tbody></table>
     </div>
     <div id="col-detail" style="display:none">
       <div class="flex-row" style="margin-bottom:14px">
@@ -137,9 +138,14 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:var(--r);back
             <button class="btn g" onclick="addRouteToCollection()" style="width:100%;margin-top:4px">+ Route hinzufügen</button>
           </div>
           <div>
+            <div class="snap-bar">
+              <button class="btn s" id="add-snap-btn" onclick="toggleAddSnap()">🧲 Snap: AUS</button>
+              <button class="btn s" id="add-route-btn" onclick="toggleAddRoute()">🛣 Strassen: AUS</button>
+              <span class="snap-loading" id="add-snap-loading">⏳ Snap...</span>
+            </div>
             <div class="map-hint">Klicke auf Karte um Punkte zu setzen:</div>
             <div class="map-ed" id="map-editor-add"></div>
-            <div class="flex-row">
+            <div class="flex-row" style="margin-top:6px">
               <span id="pt-count-add" class="text-muted">0 Punkte</span>
               <button class="btn s" onclick="undoAddPoint()">↩ Undo</button>
               <button class="btn s d" onclick="clearAddPoints()">✕ Leeren</button>
@@ -147,10 +153,8 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:var(--r);back
           </div>
         </div>
       </div>
-      <table>
-        <thead><tr><th></th><th>Name</th><th>Status</th><th>Punkte</th><th>Vorlage</th><th>Aktionen</th></tr></thead>
-        <tbody id="cr-tbody"></tbody>
-      </table>
+      <table><thead><tr><th></th><th>Name</th><th>Status</th><th>Punkte</th><th>Vorlage</th><th>Aktionen</th></tr></thead>
+      <tbody id="cr-tbody"></tbody></table>
     </div>
   </div>
 
@@ -163,6 +167,11 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:var(--r);back
         <div class="field"><label>Name</label><input type="text" id="tpl-name" placeholder="z.B. Route Dorfzentrum"></div>
         <div class="field"><label>Beschreibung (optional)</label><textarea id="tpl-desc" placeholder="Kurzbeschreibung..."></textarea></div>
         <div class="field"><label>Farbe</label><div class="color-row" id="tpl-colors"></div></div>
+        <div class="snap-bar">
+          <button class="btn s" id="tpl-snap-btn" onclick="toggleTplSnap()">🧲 Snap: AUS</button>
+          <button class="btn s" id="tpl-route-btn" onclick="toggleTplRoute()">🛣 Strassen: AUS</button>
+          <span class="snap-loading" id="tpl-snap-loading">⏳ Snap...</span>
+        </div>
         <div class="map-hint">Klicke auf Karte um Wegpunkte zu setzen:</div>
         <div class="map-ed" id="map-editor" style="height:320px"></div>
         <div class="flex-row" style="margin:8px 0">
@@ -204,10 +213,8 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:var(--r);back
     </div>
     <div class="card">
       <h3>Alle Benutzer</h3>
-      <table>
-        <thead><tr><th>Benutzername</th><th>Rolle</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
-        <tbody id="user-tbody"></tbody>
-      </table>
+      <table><thead><tr><th>Benutzername</th><th>Rolle</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
+      <tbody id="user-tbody"></tbody></table>
     </div>
   </div>
 
@@ -217,6 +224,7 @@ input[type=color]{width:36px;height:28px;padding:2px;border-radius:var(--r);back
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const API    = 'api.php';
+const OSRM   = 'https://router.project-osrm.org';
 const COLORS = ['#00d4ff','#a8ff3e','#ff6b35','#ff3e9d','#ffd700','#c084fc','#fb923c','#34d399'];
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -226,9 +234,9 @@ document.querySelectorAll('.nl').forEach(el=>{
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
     el.classList.add('active');
     document.getElementById('page-'+el.dataset.page).classList.add('active');
-    if (el.dataset.page==='sammlungen') loadCollections();
-    if (el.dataset.page==='vorlagen')   { loadTemplates(); initTplMap(); }
-    if (el.dataset.page==='benutzer')   loadUsers();
+    if(el.dataset.page==='sammlungen') loadCollections();
+    if(el.dataset.page==='vorlagen'){loadTemplates();initTplMap();}
+    if(el.dataset.page==='benutzer') loadUsers();
   });
 });
 
@@ -249,7 +257,33 @@ function toast(msg,type=''){
 function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
 function slabel(s){return{pending:'Ausstehend',active:'Aktiv',completed:'Erledigt',paused:'Pausiert',draft:'Entwurf',user:'User',admin:'Admin'}[s]||s;}
 
-// ── Color swatches ────────────────────────────────────────────────────────────
+// ── OSRM Snap-Helfer ──────────────────────────────────────────────────────────
+async function osrmNearest(lat, lng) {
+  try {
+    const r = await fetch(`${OSRM}/nearest/v1/driving/${lng},${lat}?number=1`);
+    const d = await r.json();
+    if (d.code==='Ok' && d.waypoints?.[0]) {
+      const [sLng, sLat] = d.waypoints[0].location;
+      return [sLat, sLng];
+    }
+  } catch(e) {}
+  return [lat, lng]; // Fallback: Originalpunkt
+}
+
+async function osrmRoute(from, to) {
+  // from/to: [lat,lng] – gibt Strassenfolge-Koordinaten zurück
+  try {
+    const url = `${OSRM}/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.code==='Ok' && d.routes?.[0]) {
+      return d.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+    }
+  } catch(e) {}
+  return [from, to]; // Fallback: Direktlinie
+}
+
+// ── Color Swatches ────────────────────────────────────────────────────────────
 let selColor='#00d4ff', selAddColor='#00d4ff';
 function buildColors(cid, onSelect, def){
   const c=document.getElementById(cid);
@@ -257,31 +291,106 @@ function buildColors(cid, onSelect, def){
     const sw=document.createElement('div');
     sw.className='color-sw'+(col===def?' sel':'');
     sw.style.background=col;
-    sw.addEventListener('click',()=>{
-      c.querySelectorAll('.color-sw').forEach(s=>s.classList.remove('sel'));
-      sw.classList.add('sel'); onSelect(col);
-    });
+    sw.addEventListener('click',()=>{c.querySelectorAll('.color-sw').forEach(s=>s.classList.remove('sel'));sw.classList.add('sel');onSelect(col);});
     c.appendChild(sw);
   });
   const cp=document.createElement('input'); cp.type='color'; cp.value=def;
-  cp.addEventListener('input',e=>{
-    c.querySelectorAll('.color-sw').forEach(s=>s.classList.remove('sel')); onSelect(e.target.value);
-  });
+  cp.addEventListener('input',e=>{c.querySelectorAll('.color-sw').forEach(s=>s.classList.remove('sel'));onSelect(e.target.value);});
   c.appendChild(cp);
 }
-buildColors('tpl-colors',    c=>selColor=c,    '#00d4ff');
-buildColors('add-route-colors', c=>selAddColor=c, '#00d4ff');
+buildColors('tpl-colors',   c=>selColor=c,    '#00d4ff');
+buildColors('add-route-colors',c=>selAddColor=c,'#00d4ff');
 
-// ════════════ SAMMLUNGEN ════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// SAMMLUNGEN
+// ══════════════════════════════════════════════════════════════════════════════
 let currentColId=null;
-let addMap=null, addPoints=[], addLine=null, addMarkers=[];
+
+// ── Collection Route Editor mit Snap ─────────────────────────────────────────
+let addMap=null, addSnapEnabled=false, addRouteFollow=false, addLoading=false;
+let addWaypoints=[]; // Benutzer-Klicks (nach Snap)
+let addSegments=[];  // Strassenfolge-Segmente [[lat,lng],...]
+let addMarkers=[];   // Leaflet-Marker für Waypoints
+let addLine=null;    // Polyline
+
+function toggleAddSnap(){
+  addSnapEnabled=!addSnapEnabled;
+  const btn=document.getElementById('add-snap-btn');
+  btn.textContent=`🧲 Snap: ${addSnapEnabled?'EIN':'AUS'}`;
+  btn.classList.toggle('active-snap',addSnapEnabled);
+}
+function toggleAddRoute(){
+  addRouteFollow=!addRouteFollow;
+  const btn=document.getElementById('add-route-btn');
+  btn.textContent=`🛣 Strassen: ${addRouteFollow?'EIN':'AUS'}`;
+  btn.classList.toggle('active-snap',addRouteFollow);
+}
+
+function getAddAllCoords(){
+  if(!addSegments.length) return [];
+  const all=[];
+  addSegments.forEach((seg,i)=>{ if(i===0) all.push(...seg); else all.push(...seg.slice(1)); });
+  return all;
+}
+function updateAddPolyline(){
+  if(addLine) addMap.removeLayer(addLine);
+  const coords=getAddAllCoords();
+  addLine = coords.length>1 ? L.polyline(coords,{color:selAddColor,weight:3,opacity:.9}).addTo(addMap) : null;
+}
+
+async function addMapPoint(clickLat, clickLng){
+  if(addLoading) return;
+  addLoading=true;
+  document.getElementById('add-snap-loading').style.display='block';
+  try {
+    let pt=[clickLat,clickLng];
+    if(addSnapEnabled||addRouteFollow) pt=await osrmNearest(clickLat,clickLng);
+    let seg;
+    if(addRouteFollow&&addWaypoints.length>0){
+      seg=await osrmRoute(addWaypoints[addWaypoints.length-1],pt);
+    } else {
+      seg=[pt];
+    }
+    addWaypoints.push(pt);
+    addSegments.push(seg);
+    const n=addWaypoints.length;
+    const m=L.circleMarker(pt,{radius:6,fillColor:selAddColor,color:'#fff',weight:2,fillOpacity:1})
+      .bindTooltip(String(n),{permanent:true,className:'pt-lbl',direction:'top'}).addTo(addMap);
+    addMarkers.push(m);
+    updateAddPolyline();
+    document.getElementById('pt-count-add').textContent=`${n} Punkte (${getAddAllCoords().length} Koordinaten)`;
+  } catch(e){ toast('OSRM Fehler','e'); }
+  addLoading=false;
+  document.getElementById('add-snap-loading').style.display='none';
+}
+
+function undoAddPoint(){
+  if(!addWaypoints.length) return;
+  addWaypoints.pop(); addSegments.pop();
+  if(addMarkers.length) addMap.removeLayer(addMarkers.pop());
+  updateAddPolyline();
+  const n=addWaypoints.length;
+  document.getElementById('pt-count-add').textContent=`${n} Punkte (${getAddAllCoords().length} Koordinaten)`;
+}
+function clearAddPoints(){
+  addWaypoints=[]; addSegments=[];
+  addMarkers.forEach(m=>addMap.removeLayer(m)); addMarkers=[];
+  if(addLine){addMap.removeLayer(addLine);addLine=null;}
+  document.getElementById('pt-count-add').textContent='0 Punkte';
+}
+
+function initAddMap(){
+  if(addMap){setTimeout(()=>addMap.invalidateSize(),100);return;}
+  addMap=L.map('map-editor-add',{center:[47.3769,8.5417],zoom:13});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM',maxZoom:19}).addTo(addMap);
+  addMap.on('click',e=>addMapPoint(e.latlng.lat,e.latlng.lng));
+  setTimeout(()=>addMap.invalidateSize(),200);
+}
 
 async function loadCollections(){
   const rows=await apiGet('collections_all');
   const tb=document.getElementById('col-tbody');
-  if (!Array.isArray(rows)||!rows.length){
-    tb.innerHTML='<tr><td colspan="5" class="text-muted" style="padding:12px">Noch keine Sammlungen</td></tr>'; return;
-  }
+  if(!Array.isArray(rows)||!rows.length){tb.innerHTML='<tr><td colspan="5" class="text-muted" style="padding:12px">Noch keine Sammlungen</td></tr>';return;}
   tb.innerHTML=rows.map(c=>{
     const d=new Date(c.collection_date+'T00:00:00').toLocaleDateString('de-CH',{day:'2-digit',month:'2-digit',year:'numeric'});
     return `<tr>
@@ -298,48 +407,38 @@ async function loadCollections(){
       </div></td></tr>`;
   }).join('');
 }
-
 async function createCollection(){
   const name=document.getElementById('new-col-name').value.trim();
   const date=document.getElementById('new-col-date').value;
-  if (!name||!date){toast('Name und Datum erforderlich','e');return;}
+  if(!name||!date){toast('Name und Datum erforderlich','e');return;}
   const r=await api('collection_create',{name,date});
-  if (r.error){toast(r.error,'e');return;}
+  if(r.error){toast(r.error,'e');return;}
   toast('Sammlung erstellt','g');
-  document.getElementById('new-col-name').value='';
-  document.getElementById('new-col-date').value='';
+  document.getElementById('new-col-name').value=''; document.getElementById('new-col-date').value='';
   loadCollections();
 }
 async function setColStatus(id,status){
-  const r=await api('collection_update',{id,status});
-  if (r.error){toast(r.error,'e');return;}
-  toast('Status aktualisiert','g'); loadCollections();
+  await api('collection_update',{id,status}); toast('Status aktualisiert','g'); loadCollections();
 }
 async function deleteCollection(id,name){
-  if (!confirm(`Sammlung "${name}" löschen? Alle Routen werden mitgelöscht.`)) return;
+  if(!confirm(`Sammlung "${name}" löschen?`)) return;
   await api('collection_delete',{id}); toast('Gelöscht'); loadCollections();
-  if (currentColId===id) hideColDetail();
+  if(currentColId===id) hideColDetail();
 }
-
 async function showColDetail(id,name){
   currentColId=id;
   document.getElementById('col-detail').style.display='block';
   document.getElementById('col-detail-title').textContent='Routen: '+name;
   document.getElementById('col-detail').scrollIntoView({behavior:'smooth'});
-  await loadTemplatesIntoSelect();
-  await loadColRoutes();
-  initAddMap();
+  await loadTemplatesIntoSelect(); await loadColRoutes(); initAddMap();
 }
-function hideColDetail(){
-  document.getElementById('col-detail').style.display='none'; currentColId=null;
-}
+function hideColDetail(){document.getElementById('col-detail').style.display='none';currentColId=null;}
+
 async function loadColRoutes(){
-  if (!currentColId) return;
+  if(!currentColId) return;
   const rows=await apiGet('col_routes_list',{collection_id:currentColId});
   const tb=document.getElementById('cr-tbody');
-  if (!rows.length){
-    tb.innerHTML='<tr><td colspan="6" class="text-muted" style="padding:12px">Noch keine Routen</td></tr>'; return;
-  }
+  if(!rows.length){tb.innerHTML='<tr><td colspan="6" class="text-muted" style="padding:12px">Noch keine Routen</td></tr>';return;}
   tb.innerHTML=rows.map(r=>`<tr>
     <td><div class="dot-c" style="background:${r.color};box-shadow:0 0 4px ${r.color}"></div></td>
     <td style="font-weight:600">${esc(r.name)}</td>
@@ -353,103 +452,136 @@ async function loadTemplatesIntoSelect(){
   const tpls=await apiGet('templates_list');
   const sel=document.getElementById('add-tpl-sel');
   sel.innerHTML='<option value="">— Manuell zeichnen —</option>';
-  if (Array.isArray(tpls)) tpls.forEach(t=>{
+  if(Array.isArray(tpls)) tpls.forEach(t=>{
     const o=document.createElement('option'); o.value=t.id;
     o.textContent=t.name+(t.point_count?` (${t.point_count} Pkt)`:''); sel.appendChild(o);
   });
   sel.onchange=async()=>{
-    if (!sel.value) return;
+    if(!sel.value) return;
     const tpl=await apiGet('template_detail',{id:sel.value});
-    if (tpl.name) document.getElementById('add-route-name').value=tpl.name;
-    if (tpl.color) selAddColor=tpl.color;
-    if (tpl.coordinates&&addMap){ clearAddPoints(); tpl.coordinates.forEach(p=>addMapPoint(p[0],p[1])); }
+    if(tpl.name) document.getElementById('add-route-name').value=tpl.name;
+    if(tpl.color) selAddColor=tpl.color;
+    if(tpl.coordinates&&addMap){
+      clearAddPoints();
+      // Vorlage-Koordinaten als einzelne Waypoints laden (ohne Route-Follow)
+      for(const p of tpl.coordinates){
+        addWaypoints.push(p); addSegments.push([p]);
+        const m=L.circleMarker(p,{radius:5,fillColor:selAddColor,color:'#fff',weight:2,fillOpacity:1}).addTo(addMap);
+        addMarkers.push(m);
+      }
+      updateAddPolyline();
+      const n=addWaypoints.length;
+      document.getElementById('pt-count-add').textContent=`${n} Punkte`;
+      if(n>0) addMap.fitBounds(L.latLngBounds(addWaypoints),{padding:[30,30]});
+    }
   };
 }
-
-function initAddMap(){
-  if (addMap) { setTimeout(()=>addMap.invalidateSize(),100); return; }
-  addMap=L.map('map-editor-add',{center:[47.3769,8.5417],zoom:13});
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM',maxZoom:19}).addTo(addMap);
-  addMap.on('click',e=>addMapPoint(e.latlng.lat,e.latlng.lng));
-  setTimeout(()=>addMap.invalidateSize(),200);
-}
-function addMapPoint(lat,lng){
-  addPoints.push([lat,lng]);
-  const m=L.circleMarker([lat,lng],{radius:6,fillColor:selAddColor,color:'#fff',weight:2,fillOpacity:1}).addTo(addMap);
-  m.bindTooltip(String(addPoints.length),{permanent:true,className:'pt-lbl',direction:'top'});
-  addMarkers.push(m);
-  if (addLine) addMap.removeLayer(addLine);
-  if (addPoints.length>1) addLine=L.polyline(addPoints,{color:selAddColor,weight:3}).addTo(addMap);
-  document.getElementById('pt-count-add').textContent=addPoints.length+' Punkte';
-}
-function undoAddPoint(){
-  if (!addPoints.length) return;
-  addPoints.pop(); if (addMarkers.length) addMap.removeLayer(addMarkers.pop());
-  if (addLine) addMap.removeLayer(addLine);
-  addLine = addPoints.length>1 ? L.polyline(addPoints,{color:selAddColor,weight:3}).addTo(addMap) : null;
-  document.getElementById('pt-count-add').textContent=addPoints.length+' Punkte';
-}
-function clearAddPoints(){
-  addPoints=[]; addMarkers.forEach(m=>addMap.removeLayer(m)); addMarkers=[];
-  if (addLine){addMap.removeLayer(addLine);addLine=null;}
-  document.getElementById('pt-count-add').textContent='0 Punkte';
-}
 async function addRouteToCollection(){
-  if (!currentColId){toast('Keine Sammlung ausgewählt','e');return;}
+  if(!currentColId){toast('Keine Sammlung','e');return;}
   const name=document.getElementById('add-route-name').value.trim();
   const tid=document.getElementById('add-tpl-sel').value||null;
-  if (!name){toast('Bitte Namen eingeben','e');return;}
-  if (addPoints.length<2){toast('Mindestens 2 Punkte setzen','e');return;}
-  const r=await api('col_route_add',{collection_id:currentColId,template_id:tid,name,color:selAddColor,coordinates:addPoints});
-  if (r.error){toast(r.error,'e');return;}
+  if(!name){toast('Bitte Namen eingeben','e');return;}
+  const coords=getAddAllCoords();
+  if(coords.length<2){toast('Mindestens 2 Punkte setzen','e');return;}
+  const r=await api('col_route_add',{collection_id:currentColId,template_id:tid,name,color:selAddColor,coordinates:coords});
+  if(r.error){toast(r.error,'e');return;}
   toast('Route hinzugefügt','g'); clearAddPoints();
-  document.getElementById('add-route-name').value='';
-  document.getElementById('add-tpl-sel').value='';
+  document.getElementById('add-route-name').value=''; document.getElementById('add-tpl-sel').value='';
   loadColRoutes();
 }
 async function deleteColRoute(id){
-  if (!confirm('Route aus Sammlung löschen?')) return;
+  if(!confirm('Route löschen?')) return;
   await api('col_route_delete',{id}); toast('Route gelöscht'); loadColRoutes();
 }
 
-// ════════════ ROUTEN-VORLAGEN ════════════
-let tplMap=null, tplPoints=[], tplLine=null, tplMarkers=[];
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUTEN-VORLAGEN mit Snap
+// ══════════════════════════════════════════════════════════════════════════════
+let tplMap=null, tplSnapEnabled=false, tplRouteFollow=false, tplLoading=false;
+let tplWaypoints=[];  // Benutzer-Waypoints
+let tplSegments=[];   // Strassenfolge-Segmente
+let tplMarkers=[];    // Waypoint-Marker
+let tplLine=null;     // Polyline
 
+function toggleTplSnap(){
+  tplSnapEnabled=!tplSnapEnabled;
+  const btn=document.getElementById('tpl-snap-btn');
+  btn.textContent=`🧲 Snap: ${tplSnapEnabled?'EIN':'AUS'}`;
+  btn.classList.toggle('active-snap',tplSnapEnabled);
+}
+function toggleTplRoute(){
+  tplRouteFollow=!tplRouteFollow;
+  const btn=document.getElementById('tpl-route-btn');
+  btn.textContent=`🛣 Strassen: ${tplRouteFollow?'EIN':'AUS'}`;
+  btn.classList.toggle('active-snap',tplRouteFollow);
+}
+
+function getTplAllCoords(){
+  if(!tplSegments.length) return [];
+  const all=[];
+  tplSegments.forEach((seg,i)=>{ if(i===0) all.push(...seg); else all.push(...seg.slice(1)); });
+  return all;
+}
+function updateTplPolyline(){
+  if(tplLine) tplMap.removeLayer(tplLine);
+  const coords=getTplAllCoords();
+  tplLine = coords.length>1 ? L.polyline(coords,{color:selColor,weight:3,opacity:.9}).addTo(tplMap) : null;
+}
+
+async function addPoint(clickLat, clickLng){
+  if(tplLoading) return;
+  tplLoading=true;
+  document.getElementById('tpl-snap-loading').style.display='block';
+  try {
+    let pt=[clickLat,clickLng];
+    if(tplSnapEnabled||tplRouteFollow) pt=await osrmNearest(clickLat,clickLng);
+    let seg;
+    if(tplRouteFollow&&tplWaypoints.length>0){
+      seg=await osrmRoute(tplWaypoints[tplWaypoints.length-1],pt);
+    } else {
+      seg=[pt];
+    }
+    tplWaypoints.push(pt); tplSegments.push(seg);
+    const n=tplWaypoints.length;
+    const m=L.circleMarker(pt,{radius:7,fillColor:selColor,color:'#fff',weight:2,fillOpacity:1})
+      .bindTooltip(String(n),{permanent:true,className:'pt-lbl',direction:'top'}).addTo(tplMap);
+    tplMarkers.push(m);
+    updateTplPolyline();
+    document.getElementById('pt-count').textContent=`${n} Punkte (${getTplAllCoords().length} Koordinaten)`;
+  } catch(e){ toast('OSRM Fehler – Direktlinie verwendet','e'); }
+  tplLoading=false;
+  document.getElementById('tpl-snap-loading').style.display='none';
+}
+
+function undoPoint(){
+  if(!tplWaypoints.length) return;
+  tplWaypoints.pop(); tplSegments.pop();
+  if(tplMarkers.length) tplMap.removeLayer(tplMarkers.pop());
+  updateTplPolyline();
+  const n=tplWaypoints.length;
+  document.getElementById('pt-count').textContent=`${n} Punkte (${getTplAllCoords().length} Koordinaten)`;
+}
+function clearPoints(){
+  tplWaypoints=[]; tplSegments=[];
+  tplMarkers.forEach(m=>tplMap.removeLayer(m)); tplMarkers=[];
+  if(tplLine){tplMap.removeLayer(tplLine);tplLine=null;}
+  document.getElementById('pt-count').textContent='0 Punkte';
+}
 function initTplMap(){
-  if (tplMap) { setTimeout(()=>tplMap.invalidateSize(),100); return; }
+  if(tplMap){setTimeout(()=>tplMap.invalidateSize(),100);return;}
   tplMap=L.map('map-editor',{center:[47.3769,8.5417],zoom:13});
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM',maxZoom:19}).addTo(tplMap);
   tplMap.on('click',e=>addPoint(e.latlng.lat,e.latlng.lng));
   setTimeout(()=>tplMap.invalidateSize(),200);
 }
-function addPoint(lat,lng){
-  tplPoints.push([lat,lng]);
-  const m=L.circleMarker([lat,lng],{radius:7,fillColor:selColor,color:'#fff',weight:2,fillOpacity:1}).addTo(tplMap);
-  m.bindTooltip(String(tplPoints.length),{permanent:true,className:'pt-lbl',direction:'top'});
-  tplMarkers.push(m);
-  if (tplLine) tplMap.removeLayer(tplLine);
-  if (tplPoints.length>1) tplLine=L.polyline(tplPoints,{color:selColor,weight:3}).addTo(tplMap);
-  document.getElementById('pt-count').textContent=tplPoints.length+' Punkte';
-}
-function undoPoint(){
-  if (!tplPoints.length) return;
-  tplPoints.pop(); if (tplMarkers.length) tplMap.removeLayer(tplMarkers.pop());
-  if (tplLine) tplMap.removeLayer(tplLine);
-  tplLine = tplPoints.length>1 ? L.polyline(tplPoints,{color:selColor,weight:3}).addTo(tplMap) : null;
-  document.getElementById('pt-count').textContent=tplPoints.length+' Punkte';
-}
-function clearPoints(){
-  tplPoints=[]; tplMarkers.forEach(m=>tplMap.removeLayer(m)); tplMarkers=[];
-  if (tplLine){tplMap.removeLayer(tplLine);tplLine=null;}
-  document.getElementById('pt-count').textContent='0 Punkte';
-}
 async function saveTemplate(){
   const name=document.getElementById('tpl-name').value.trim();
   const desc=document.getElementById('tpl-desc').value.trim();
-  if (!name){toast('Bitte Namen eingeben','e');return;}
-  if (tplPoints.length<2){toast('Mindestens 2 Punkte setzen','e');return;}
-  const r=await api('template_create',{name,description:desc,color:selColor,coordinates:tplPoints});
-  if (r.error){toast(r.error,'e');return;}
+  if(!name){toast('Bitte Namen eingeben','e');return;}
+  const coords=getTplAllCoords();
+  if(coords.length<2){toast('Mindestens 2 Punkte setzen','e');return;}
+  const r=await api('template_create',{name,description:desc,color:selColor,coordinates:coords});
+  if(r.error){toast(r.error,'e');return;}
   toast('Vorlage gespeichert ✓','g');
   document.getElementById('tpl-name').value=''; document.getElementById('tpl-desc').value='';
   clearPoints(); loadTemplates();
@@ -457,14 +589,14 @@ async function saveTemplate(){
 async function loadTemplates(){
   const rows=await apiGet('templates_list');
   const c=document.getElementById('tpl-list');
-  if (!Array.isArray(rows)||!rows.length){c.innerHTML='<p>Noch keine Vorlagen erstellt</p>';return;}
+  if(!Array.isArray(rows)||!rows.length){c.innerHTML='<p>Noch keine Vorlagen erstellt</p>';return;}
   c.innerHTML=rows.map(t=>`
     <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
       <div class="dot-c" style="background:${t.color};box-shadow:0 0 4px ${t.color}"></div>
       <div style="flex:1">
         <div style="font-weight:700;font-size:14px">${esc(t.name)}</div>
         ${t.description?`<div class="text-muted">${esc(t.description)}</div>`:''}
-        <div class="text-muted">${t.point_count||0} Wegpunkte</div>
+        <div class="text-muted">${t.point_count||0} Koordinaten</div>
       </div>
       <button class="btn s" onclick="editTemplate('${t.id}')">✏️</button>
       <button class="btn s d" onclick="deleteTemplate('${t.id}','${esc(t.name)}')">✕</button>
@@ -472,25 +604,32 @@ async function loadTemplates(){
 }
 async function editTemplate(id){
   const t=await apiGet('template_detail',{id});
-  if (!t||!t.id){toast('Fehler beim Laden','e');return;}
+  if(!t||!t.id){toast('Fehler','e');return;}
   document.getElementById('tpl-name').value=t.name;
   document.getElementById('tpl-desc').value=t.description||'';
   selColor=t.color; clearPoints();
-  if (t.coordinates) t.coordinates.forEach(p=>addPoint(p[0],p[1]));
-  if (tplPoints.length) tplMap.fitBounds(L.latLngBounds(tplPoints),{padding:[30,30]});
+  // Koordinaten als Einzelwaypoints laden (Snap/Route-Follow abschalten)
+  if(t.coordinates){
+    t.coordinates.forEach(p=>{ tplWaypoints.push(p); tplSegments.push([p]); const m=L.circleMarker(p,{radius:5,fillColor:selColor,color:'#fff',weight:2,fillOpacity:1}).addTo(tplMap); tplMarkers.push(m); });
+    updateTplPolyline();
+    if(tplWaypoints.length) tplMap.fitBounds(L.latLngBounds(tplWaypoints),{padding:[30,30]});
+  }
+  document.getElementById('pt-count').textContent=`${tplWaypoints.length} Punkte`;
   toast('Vorlage geladen – bearbeiten und speichern');
 }
 async function deleteTemplate(id,name){
-  if (!confirm(`Vorlage "${name}" löschen?`)) return;
+  if(!confirm(`Vorlage "${name}" löschen?`)) return;
   await api('template_delete',{id}); toast('Vorlage gelöscht'); loadTemplates();
 }
 
-// ════════════ BENUTZER ════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// BENUTZER
+// ══════════════════════════════════════════════════════════════════════════════
 async function loadUsers(){
   const rows=await apiGet('users_list');
   const tb=document.getElementById('user-tbody');
   const sel=document.getElementById('pw-uid');
-  if (!Array.isArray(rows)){tb.innerHTML='<tr><td colspan="4" style="color:var(--orange)">Fehler</td></tr>';return;}
+  if(!Array.isArray(rows)){tb.innerHTML='<tr><td colspan="4" style="color:var(--orange)">Fehler</td></tr>';return;}
   tb.innerHTML=rows.map(u=>`<tr>
     <td style="font-weight:700">${esc(u.username)}</td>
     <td><span class="badge ${u.role}">${u.role}</span></td>
@@ -503,25 +642,25 @@ async function createUser(){
   const username=document.getElementById('new-uname').value.trim();
   const password=document.getElementById('new-upass').value;
   const role=document.getElementById('new-urole').value;
-  if (!username||!password){toast('Alle Felder ausfüllen','e');return;}
+  if(!username||!password){toast('Alle Felder ausfüllen','e');return;}
   const r=await api('user_create',{username,password,role});
-  if (r.error){toast(r.error,'e');return;}
+  if(r.error){toast(r.error,'e');return;}
   toast(`Benutzer "${username}" erstellt`,'g');
   document.getElementById('new-uname').value=''; document.getElementById('new-upass').value='';
   loadUsers();
 }
 async function deleteUser(id,name){
-  if (!confirm(`Benutzer "${name}" löschen?`)) return;
+  if(!confirm(`Benutzer "${name}" löschen?`)) return;
   const r=await api('user_delete',{id});
-  if (r.error){toast(r.error,'e');return;}
+  if(r.error){toast(r.error,'e');return;}
   toast('Benutzer gelöscht'); loadUsers();
 }
 async function changePassword(){
   const id=parseInt(document.getElementById('pw-uid').value);
   const password=document.getElementById('pw-new').value;
-  if (!password){toast('Passwort eingeben','e');return;}
+  if(!password){toast('Passwort eingeben','e');return;}
   const r=await api('user_change_password',{id,password});
-  if (r.error){toast(r.error,'e');return;}
+  if(r.error){toast(r.error,'e');return;}
   toast('Passwort geändert ✓','g'); document.getElementById('pw-new').value='';
 }
 

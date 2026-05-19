@@ -179,6 +179,7 @@ select:focus{border-color:var(--accent)}
 const API      = 'api.php';
 const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
 const POLL_MS  = <?= POLL_INTERVAL ?>;
+const OSRM     = 'https://router.project-osrm.org';
 
 let myToken=localStorage.getItem('ps_token')||null;
 let myName=localStorage.getItem('ps_name')||null;
@@ -187,32 +188,56 @@ let myLat=null, myLng=null, wakeLock=null;
 let routes=[], vehicles=[], showAllVehicles=false;
 const routeLayers={}, vehicleMarkers={};
 
-// ── Service Worker registrieren ───────────────────────────────────────────────
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').then(async reg => {
-    console.log('SW registriert');
-    // Periodic Sync für Android Chrome PWA (optional)
-    if ('periodicSync' in reg) {
-      try {
-        await reg.periodicSync.register('gps-keepalive', { minInterval: 15000 });
-      } catch(e) { /* nicht unterstützt */ }
-    }
-  }).catch(e => console.warn('SW Fehler:', e));
+// ── Fahrzeug-Snap auf Strasse ─────────────────────────────────────────────────
+const vehicleSnap   = {};   // token → { srcLat, srcLng, lat, lng }
+const snapInFlight  = new Set();
+const SNAP_THRESHOLD = 0.00005; // ~5m
 
-  // SW fragt nach aktuellem GPS → antworten
-  navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data?.type === 'REQUEST_GPS' && myLat !== null && isJoined) {
-      sendGPS(myLat, myLng);
-    }
+function updateVehicleSnaps() {
+  vehicles.forEach(v => {
+    if (v.lat === null || v.lng === null) return;
+    if (snapInFlight.has(v.token)) return;
+    const cached = vehicleSnap[v.token];
+    if (cached
+      && Math.abs(cached.srcLat - v.lat) < SNAP_THRESHOLD
+      && Math.abs(cached.srcLng - v.lng) < SNAP_THRESHOLD) return;
+
+    snapInFlight.add(v.token);
+    fetch(`${OSRM}/nearest/v1/driving/${v.lng},${v.lat}?number=1`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.code === 'Ok' && d.waypoints?.[0]) {
+          const [lng, lat] = d.waypoints[0].location;
+          vehicleSnap[v.token] = { srcLat: v.lat, srcLng: v.lng, lat, lng };
+        } else {
+          vehicleSnap[v.token] = { srcLat: v.lat, srcLng: v.lng, lat: v.lat, lng: v.lng };
+        }
+        snapInFlight.delete(v.token);
+        renderVehicleMarkers();
+      })
+      .catch(() => {
+        vehicleSnap[v.token] = { srcLat: v.lat, srcLng: v.lng, lat: v.lat, lng: v.lng };
+        snapInFlight.delete(v.token);
+      });
   });
 }
 
-// GPS senden – via Service Worker (Hintergrund-fähig) oder direkt
+// ── Service Worker ────────────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(async reg => {
+    if ('periodicSync' in reg) {
+      try { await reg.periodicSync.register('gps-keepalive', { minInterval: 15000 }); } catch(e) {}
+    }
+  }).catch(() => {});
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'REQUEST_GPS' && myLat !== null && isJoined) sendGPS(myLat, myLng);
+  });
+}
+
 function sendGPS(lat, lng) {
-  const payload = { token: myToken, lat, lng, collection_id: currentColId };
+  const payload = { token:myToken, lat, lng, collection_id:currentColId };
   if (navigator.serviceWorker?.controller) {
-    // Service Worker sendet mit keepalive:true → läuft im Hintergrund weiter
-    navigator.serviceWorker.controller.postMessage({ type: 'GPS_UPDATE', ...payload });
+    navigator.serviceWorker.controller.postMessage({ type:'GPS_UPDATE', ...payload });
   } else {
     api('vehicle_position', payload);
   }
@@ -224,16 +249,13 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'�
 L.control.zoom({position:'bottomleft'}).addTo(map);
 
 document.getElementById('btn-locate').addEventListener('click',()=>{
-  if(myLat!==null) map.setView([myLat,myLng],17);
-  else notify('Noch keine GPS-Position','w');
+  if(myLat!==null) map.setView([myLat,myLng],17); else notify('Noch keine GPS-Position','w');
 });
 document.getElementById('btn-fit-all').addEventListener('click',()=>{
   const all=routes.filter(r=>r.visible&&r.coordinates.length).flatMap(r=>r.coordinates);
   if(all.length) map.fitBounds(L.latLngBounds(all),{padding:[30,30]});
   else notify('Keine sichtbaren Routen','w');
 });
-
-// ── Alle Fahrzeuge Toggle ─────────────────────────────────────────────────────
 document.getElementById('btn-show-all').addEventListener('click',function(){
   showAllVehicles=!showAllVehicles;
   this.textContent=showAllVehicles?'👁 Nur ich':'👁 Alle anzeigen';
@@ -247,16 +269,13 @@ async function requestWakeLock(){
   try{
     wakeLock=await navigator.wakeLock.request('screen');
     document.getElementById('wake-banner').style.display='flex';
-    wakeLock.addEventListener('release',()=>{
-      document.getElementById('wake-banner').style.display='none'; wakeLock=null;
-    });
+    wakeLock.addEventListener('release',()=>{document.getElementById('wake-banner').style.display='none';wakeLock=null;});
   }catch(e){}
 }
 async function releaseWakeLock(){
   if(wakeLock){await wakeLock.release();wakeLock=null;}
   document.getElementById('wake-banner').style.display='none';
 }
-// Wake Lock wiederherstellen wenn Tab wieder aktiv
 document.addEventListener('visibilitychange',async()=>{
   if(document.visibilityState==='visible'&&isJoined&&!wakeLock) await requestWakeLock();
 });
@@ -311,7 +330,6 @@ document.getElementById('col-select').addEventListener('change',function(){
   if(currentColId) pollState();
 });
 
-// ── Polling ───────────────────────────────────────────────────────────────────
 let pollTimer=null;
 function startPolling(){if(pollTimer)clearInterval(pollTimer);pollState();pollTimer=setInterval(pollState,POLL_MS);}
 async function pollState(){
@@ -345,8 +363,7 @@ async function joinVehicle(){
   document.getElementById('join-form').style.display='none';
   document.getElementById('v-info').style.display='flex';
   document.getElementById('disp-vname').textContent=myName;
-  showMapButtons(); setMyStatus('idle');
-  notify(`${myName} verbunden`,'g');
+  showMapButtons(); setMyStatus('idle'); notify(`${myName} verbunden`,'g');
   startGPS(); await requestWakeLock();
 }
 
@@ -370,10 +387,9 @@ function startGPS(){
   navigator.geolocation.watchPosition(
     pos=>{
       myLat=pos.coords.latitude; myLng=pos.coords.longitude;
-      const acc=Math.round(pos.coords.accuracy);
       document.getElementById('gdot').className='gdot on';
-      document.getElementById('gps-txt').textContent=`${myLat.toFixed(5)}, ${myLng.toFixed(5)} ±${acc}m`;
-      if(isJoined) sendGPS(myLat, myLng);  // via Service Worker
+      document.getElementById('gps-txt').textContent=`${myLat.toFixed(5)}, ${myLng.toFixed(5)} ±${Math.round(pos.coords.accuracy)}m`;
+      if(isJoined) sendGPS(myLat, myLng);
       if(!gpsInit){map.setView([myLat,myLng],15);gpsInit=true;}
     },
     err=>{
@@ -387,61 +403,38 @@ function startGPS(){
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderAll(){
-  renderRoutes(); renderRouteList(); renderVehicleMarkers(); renderVehicleList(); updateStats();
+  renderRoutes(); renderRouteList();
+  updateVehicleSnaps(); // Snap-Anfragen starten (async)
+  renderVehicleMarkers(); // Sofort mit aktuellem Stand rendern
+  renderVehicleList(); updateStats();
   if(isJoined){const me=vehicles.find(v=>v.token===myToken);if(me)setMyStatus(me.status);}
 }
 
-// ── Routen: Rot (offen) + Grün (abgefahren) ──────────────────────────────────
 function renderRoutes(){
   routes.forEach(route=>{
     if(routeLayers[route.id]) routeLayers[route.id].forEach(l=>map.removeLayer(l));
     if(!route.visible){routeLayers[route.id]=[];return;}
     const coords=route.coordinates, layers=[];
-
     if(route.status==='pending'){
-      // Noch nicht gestartet: gestrichelt in Routenfarbe
       layers.push(L.polyline(coords,{color:route.color,weight:3,opacity:0.55,dashArray:'6,5',lineCap:'round'}));
-
     } else if(route.status==='completed'){
-      // Komplett abgefahren: ganz grün
       layers.push(L.polyline(coords,{color:'#a8ff3e',weight:4,opacity:0.9,lineCap:'round'}));
-
     } else if(route.status==='active'||route.status==='paused'){
       const pi=Math.max(0,Math.floor((coords.length-1)*route.progress/100));
-      const done=coords.slice(0,pi+1);
-      const todo=coords.slice(pi);
-
-      // Abgefahrener Teil: GRÜN (solide)
-      if(done.length>1){
-        layers.push(L.polyline(done,{color:'#a8ff3e',weight:5,opacity:1,lineCap:'round'}));
-      }
-      // Noch offener Teil: ROT (gestrichelt wenn pausiert)
-      if(todo.length>1){
-        layers.push(L.polyline(todo,{
-          color:'#ff4444',weight:4,opacity:0.9,
-          dashArray:route.status==='paused'?'8,5':null,
-          lineCap:'round'
-        }));
-      }
+      const done=coords.slice(0,pi+1), todo=coords.slice(pi);
+      if(done.length>1) layers.push(L.polyline(done,{color:'#a8ff3e',weight:5,opacity:1,lineCap:'round'}));
+      if(todo.length>1) layers.push(L.polyline(todo,{color:'#ff4444',weight:4,opacity:0.9,dashArray:route.status==='paused'?'8,5':null,lineCap:'round'}));
     }
-
-    // Start/End Punkte
     const f=coords[0], la=coords[coords.length-1];
-    layers.push(L.circleMarker(f,{radius:7,fillColor:route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1})
-      .bindTooltip('Start: '+route.name,{className:'rtt',direction:'right'}));
-    layers.push(L.circleMarker(la,{radius:7,fillColor:route.status==='completed'?'#a8ff3e':route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1})
-      .bindTooltip('Ziel: '+route.name,{className:'rtt',direction:'right'}));
-
+    layers.push(L.circleMarker(f,{radius:7,fillColor:route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1}).bindTooltip('Start: '+route.name,{className:'rtt',direction:'right'}));
+    layers.push(L.circleMarker(la,{radius:7,fillColor:route.status==='completed'?'#a8ff3e':route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1}).bindTooltip('Ziel: '+route.name,{className:'rtt',direction:'right'}));
     layers.forEach(l=>l.addTo(map));
-    if(layers[0]) layers[0].bindTooltip(
-      `<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,
-      {permanent:false,direction:'top',className:'rtt'}
-    );
+    if(layers[0]) layers[0].bindTooltip(`<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,{permanent:false,direction:'top',className:'rtt'});
     routeLayers[route.id]=layers;
   });
 }
 
-// ── Fahrzeug-Marker: Standard nur eigenes ────────────────────────────────────
+// ── Fahrzeug-Marker mit Strassen-Snap ────────────────────────────────────────
 function renderVehicleMarkers(){
   const ids=new Set(vehicles.map(v=>v.token));
   Object.keys(vehicleMarkers).forEach(id=>{
@@ -454,21 +447,24 @@ function renderVehicleMarkers(){
       if(vehicleMarkers[v.token]){map.removeLayer(vehicleMarkers[v.token]);delete vehicleMarkers[v.token];}
       return;
     }
+    // Gesnappte Position verwenden wenn verfügbar
+    const snap=vehicleSnap[v.token];
+    const dLat=snap?snap.lat:v.lat;
+    const dLng=snap?snap.lng:v.lng;
+
     const col=self?'#ffd700':v.status==='paused'?'#ff6b35':'#00d4ff', sz=self?18:12;
     const icon=L.divIcon({className:'',
       html:`<div style="width:${sz}px;height:${sz}px;background:${col};border:2px solid ${self?'#fff':'rgba(255,255,255,.7)'};border-radius:50%;box-shadow:0 0 ${self?12:6}px ${col}"></div>`,
       iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
     if(vehicleMarkers[v.token]){
-      vehicleMarkers[v.token].setLatLng([v.lat,v.lng]); vehicleMarkers[v.token].setIcon(icon);
+      vehicleMarkers[v.token].setLatLng([dLat,dLng]); vehicleMarkers[v.token].setIcon(icon);
     } else {
-      vehicleMarkers[v.token]=L.marker([v.lat,v.lng],{icon,zIndexOffset:self?1000:0}).addTo(map)
-        .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`,
-          {permanent:self,direction:'top',offset:[0,-(sz/2+4)],className:'rtt'});
+      vehicleMarkers[v.token]=L.marker([dLat,dLng],{icon,zIndexOffset:self?1000:0}).addTo(map)
+        .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`,{permanent:self,direction:'top',offset:[0,-(sz/2+4)],className:'rtt'});
     }
   });
 }
 
-// ── Routen-Liste ──────────────────────────────────────────────────────────────
 function renderRouteList(){
   const c=document.getElementById('route-list'); c.innerHTML='';
   if(!routes.length){c.innerHTML='<p style="color:var(--muted);font-size:12px;font-family:var(--font-mono);padding:4px">Keine Routen</p>';return;}
@@ -477,8 +473,7 @@ function renderRouteList(){
     const av=vehicles.find(v=>v.token===route.assigned_token);
     const card=document.createElement('div');
     card.className='rc'+(route.visible?'':' hidden-r');
-    const sideColor=route.status==='completed'?'#a8ff3e':route.status==='active'||route.status==='paused'?'#ff4444':route.color;
-    card.style.setProperty('--rc',sideColor);
+    card.style.setProperty('--rc',route.status==='completed'?'#a8ff3e':route.status==='active'||route.status==='paused'?'#ff4444':route.color);
     let acts='';
     acts+=`<button class="btn s btn-foc">🔍 Fokus</button>`;
     acts+=`<button class="btn s btn-tog">${route.visible?'Ausblenden':'Einblenden'}</button>`;
@@ -492,9 +487,7 @@ function renderRouteList(){
       <div class="rm">${route.coordinates.length} Pkt · ${av?'🚛 '+av.name:'—'} · ${route.progress}%</div>
       <div class="ra">${acts}</div>`;
     c.appendChild(card);
-    card.querySelector('.btn-foc')?.addEventListener('click',()=>{
-      if(route.coordinates.length) map.fitBounds(L.latLngBounds(route.coordinates),{padding:[40,40]});
-    });
+    card.querySelector('.btn-foc')?.addEventListener('click',()=>{ if(route.coordinates.length) map.fitBounds(L.latLngBounds(route.coordinates),{padding:[40,40]}); });
     card.querySelector('.btn-tog')?.addEventListener('click',async()=>{await api('route_toggle',{route_id:route.id});pollState();});
     card.querySelector('.btn-start')?.addEventListener('click',async()=>{
       if(!isJoined){notify('Bitte zuerst verbinden','w');return;}
@@ -502,12 +495,8 @@ function renderRouteList(){
       if(r.error){notify(r.error,'w');return;}
       setMyStatus('driving'); pollState(); await requestWakeLock();
     });
-    card.querySelector('.btn-pause')?.addEventListener('click',async()=>{
-      await api('route_pause',{token:myToken,route_id:route.id}); setMyStatus('paused'); pollState();
-    });
-    card.querySelector('.btn-resume')?.addEventListener('click',async()=>{
-      await api('route_resume',{token:myToken,route_id:route.id}); setMyStatus('driving'); pollState(); await requestWakeLock();
-    });
+    card.querySelector('.btn-pause')?.addEventListener('click',async()=>{await api('route_pause',{token:myToken,route_id:route.id}); setMyStatus('paused'); pollState();});
+    card.querySelector('.btn-resume')?.addEventListener('click',async()=>{await api('route_resume',{token:myToken,route_id:route.id}); setMyStatus('driving'); pollState(); await requestWakeLock();});
     card.querySelector('.btn-done')?.addEventListener('click',async()=>{
       await api('route_complete',{token:myToken,route_id:route.id});
       setMyStatus('idle'); notify(`${route.name} erledigt ✓`,'g'); pollState(); await releaseWakeLock();
