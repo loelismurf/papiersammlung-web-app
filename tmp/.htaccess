@@ -1,5 +1,0 @@
-# Nur install.php sperren, migrate.php bleibt zugänglich
-<Files "install.php">
-    Order Allow,Deny
-    Deny from all
-</Files>
