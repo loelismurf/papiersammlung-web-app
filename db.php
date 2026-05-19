@@ -13,23 +13,18 @@ function db(): PDO {
     }
     return $pdo;
 }
-
 function db_row(string $sql, array $p = []): ?array {
-    $s = db()->prepare($sql); $s->execute($p);
-    return $s->fetch() ?: null;
+    $s = db()->prepare($sql); $s->execute($p); return $s->fetch() ?: null;
 }
 function db_rows(string $sql, array $p = []): array {
-    $s = db()->prepare($sql); $s->execute($p);
-    return $s->fetchAll();
+    $s = db()->prepare($sql); $s->execute($p); return $s->fetchAll();
 }
 function db_run(string $sql, array $p = []): void {
     db()->prepare($sql)->execute($p);
 }
 function db_val(string $sql, array $p = []) {
-    $s = db()->prepare($sql); $s->execute($p);
-    return $s->fetchColumn();
+    $s = db()->prepare($sql); $s->execute($p); return $s->fetchColumn();
 }
-
 function json_response(array $data, int $status = 200): void {
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
@@ -49,12 +44,25 @@ function cleanup_vehicles(): void {
             WHERE last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND) AND status != 'offline'",
            [VEHICLE_TIMEOUT]);
 }
-function calculate_progress(float $lat, float $lng, array $coords): int {
-    if (count($coords) < 2) return 0;
-    $closest = 0; $minDist = PHP_FLOAT_MAX;
+
+// Haversine-Distanz in Metern
+function haversine(float $lat1, float $lng1, float $lat2, float $lng2): float {
+    $R    = 6371000;
+    $dLat = deg2rad($lat2 - $lat1);
+    $dLng = deg2rad($lng2 - $lng1);
+    $a    = sin($dLat/2)**2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng/2)**2;
+    return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
+}
+
+// Fortschritt: 5m Toleranz, geht nur vorwärts
+function calculate_progress(float $lat, float $lng, array $coords, int $currentProgress = 0): int {
+    $n = count($coords);
+    if ($n < 2) return 0;
+    $maxIndex = (int) round($currentProgress / 100 * ($n - 1));
     foreach ($coords as $i => $p) {
-        $d = hypot($p[0] - $lat, $p[1] - $lng);
-        if ($d < $minDist) { $minDist = $d; $closest = $i; }
+        if (haversine($lat, $lng, $p[0], $p[1]) <= 5.0) {
+            $maxIndex = max($maxIndex, $i);
+        }
     }
-    return (int) round($closest / (count($coords) - 1) * 100);
+    return (int) round($maxIndex / ($n - 1) * 100);
 }

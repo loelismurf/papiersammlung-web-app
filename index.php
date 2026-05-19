@@ -63,8 +63,13 @@ select:focus{border-color:var(--accent)}
 .pf{height:100%;border-radius:2px;transition:width .5s}
 .rm{font-size:11px;color:var(--muted);font-family:var(--font-mono);margin-bottom:8px}
 .ra{display:flex;gap:5px;flex-wrap:wrap}
-#veh-panel{border-top:1px solid var(--border);padding:10px 14px;background:#0c0e12;flex-shrink:0;max-height:140px;overflow-y:auto}
-.vi{display:flex;align-items:center;gap:7px;font-size:12px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);margin-top:5px}
+#veh-panel{border-top:1px solid var(--border);padding:10px 14px;background:#0c0e12;flex-shrink:0;max-height:170px;overflow-y:auto}
+#veh-header{display:flex;align-items:center;margin-bottom:6px}
+#veh-header .lbl{margin-bottom:0;flex:1}
+#btn-show-all{font-size:10px;font-family:var(--font-mono);padding:3px 8px;border-radius:2px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
+#btn-show-all:hover{border-color:var(--accent);color:var(--accent)}
+#btn-show-all.active{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08)}
+.vi{display:flex;align-items:center;gap:7px;font-size:12px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);margin-top:4px}
 .vd{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0}
 .vd.paused{background:var(--orange)}.vd.idle{background:var(--muted)}
 .btn{background:transparent;border:1px solid var(--border2);color:var(--text);padding:7px 12px;border-radius:var(--r);font-family:var(--font-ui);font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s;white-space:nowrap;text-decoration:none;display:inline-block}
@@ -79,8 +84,9 @@ select:focus{border-color:var(--accent)}
 .mb{background:rgba(10,12,15,.88);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:7px 12px;font-size:11px;font-family:var(--font-mono);pointer-events:auto}
 .mb .ml{color:var(--muted);font-size:9px;letter-spacing:2px;text-transform:uppercase}
 .mb .mv{color:var(--text);font-weight:500;margin-top:1px}
-#btn-locate{position:absolute;bottom:60px;left:10px;z-index:500;background:rgba(10,12,15,.9);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:9px 12px;font-size:18px;cursor:pointer;line-height:1;display:none}
-#btn-locate:hover{border-color:var(--accent)}
+#map-actions{position:absolute;bottom:60px;right:10px;z-index:500;display:flex;flex-direction:column;gap:6px}
+.map-btn{background:rgba(10,12,15,.92);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:9px 11px;font-size:16px;cursor:pointer;line-height:1;transition:border-color .2s;display:none}
+.map-btn:hover{border-color:var(--accent)}
 #pi{position:absolute;bottom:20px;right:10px;z-index:500;display:flex;align-items:center;gap:7px;background:rgba(10,12,15,.88);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:7px 12px;font-size:11px;font-family:var(--font-mono)}
 .pd{width:7px;height:7px;border-radius:50%;background:var(--muted)}
 .pd.on{background:var(--green);box-shadow:0 0 5px var(--green)}
@@ -136,7 +142,10 @@ select:focus{border-color:var(--accent)}
     </div>
   </div>
   <div id="veh-panel">
-    <div class="lbl">Aktive Fahrzeuge</div>
+    <div id="veh-header">
+      <span class="lbl">Aktive Fahrzeuge</span>
+      <button id="btn-show-all">👁 Alle anzeigen</button>
+    </div>
     <div id="veh-list"><span style="color:var(--muted);font-size:12px;font-family:var(--font-mono)">—</span></div>
   </div>
 </aside>
@@ -148,7 +157,10 @@ select:focus{border-color:var(--accent)}
     <div class="mb"><div class="ml">Erledigt</div><div class="mv" id="sd">0</div></div>
   </div>
   <div id="notifs"></div>
-  <button id="btn-locate" title="Zu meiner Position">📍</button>
+  <div id="map-actions">
+    <button class="map-btn" id="btn-locate" title="Zu meiner Position">📍</button>
+    <button class="map-btn" id="btn-fit-all" title="Alle Routen anzeigen">🗺</button>
+  </div>
   <div id="legend">
     <div class="leg-row"><div class="leg-line" style="background:var(--green)"></div>Abgefahren</div>
     <div class="leg-row"><div class="leg-line" style="background:var(--red)"></div>Noch offen</div>
@@ -172,37 +184,84 @@ let myToken=localStorage.getItem('ps_token')||null;
 let myName=localStorage.getItem('ps_name')||null;
 let isJoined=false, currentColId=null;
 let myLat=null, myLng=null, wakeLock=null;
-let routes=[], vehicles=[];
+let routes=[], vehicles=[], showAllVehicles=false;
 const routeLayers={}, vehicleMarkers={};
 
-// Map
+// ── Service Worker registrieren ───────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(async reg => {
+    console.log('SW registriert');
+    // Periodic Sync für Android Chrome PWA (optional)
+    if ('periodicSync' in reg) {
+      try {
+        await reg.periodicSync.register('gps-keepalive', { minInterval: 15000 });
+      } catch(e) { /* nicht unterstützt */ }
+    }
+  }).catch(e => console.warn('SW Fehler:', e));
+
+  // SW fragt nach aktuellem GPS → antworten
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'REQUEST_GPS' && myLat !== null && isJoined) {
+      sendGPS(myLat, myLng);
+    }
+  });
+}
+
+// GPS senden – via Service Worker (Hintergrund-fähig) oder direkt
+function sendGPS(lat, lng) {
+  const payload = { token: myToken, lat, lng, collection_id: currentColId };
+  if (navigator.serviceWorker?.controller) {
+    // Service Worker sendet mit keepalive:true → läuft im Hintergrund weiter
+    navigator.serviceWorker.controller.postMessage({ type: 'GPS_UPDATE', ...payload });
+  } else {
+    api('vehicle_position', payload);
+  }
+}
+
+// ── Map ───────────────────────────────────────────────────────────────────────
 const map=L.map('map',{center:[47.3769,8.5417],zoom:13,zoomControl:false});
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
 L.control.zoom({position:'bottomleft'}).addTo(map);
+
 document.getElementById('btn-locate').addEventListener('click',()=>{
-  if(myLat!==null) map.setView([myLat,myLng],16); else notify('Noch keine GPS-Position','w');
+  if(myLat!==null) map.setView([myLat,myLng],17);
+  else notify('Noch keine GPS-Position','w');
+});
+document.getElementById('btn-fit-all').addEventListener('click',()=>{
+  const all=routes.filter(r=>r.visible&&r.coordinates.length).flatMap(r=>r.coordinates);
+  if(all.length) map.fitBounds(L.latLngBounds(all),{padding:[30,30]});
+  else notify('Keine sichtbaren Routen','w');
 });
 
-// Wake Lock
+// ── Alle Fahrzeuge Toggle ─────────────────────────────────────────────────────
+document.getElementById('btn-show-all').addEventListener('click',function(){
+  showAllVehicles=!showAllVehicles;
+  this.textContent=showAllVehicles?'👁 Nur ich':'👁 Alle anzeigen';
+  this.classList.toggle('active',showAllVehicles);
+  renderVehicleMarkers();
+});
+
+// ── Wake Lock ─────────────────────────────────────────────────────────────────
 async function requestWakeLock(){
   if(!('wakeLock' in navigator)) return;
-  try {
+  try{
     wakeLock=await navigator.wakeLock.request('screen');
     document.getElementById('wake-banner').style.display='flex';
     wakeLock.addEventListener('release',()=>{
       document.getElementById('wake-banner').style.display='none'; wakeLock=null;
     });
-  } catch(e){}
+  }catch(e){}
 }
 async function releaseWakeLock(){
-  if(wakeLock){await wakeLock.release(); wakeLock=null;}
+  if(wakeLock){await wakeLock.release();wakeLock=null;}
   document.getElementById('wake-banner').style.display='none';
 }
+// Wake Lock wiederherstellen wenn Tab wieder aktiv
 document.addEventListener('visibilitychange',async()=>{
   if(document.visibilityState==='visible'&&isJoined&&!wakeLock) await requestWakeLock();
 });
 
-// API
+// ── API ───────────────────────────────────────────────────────────────────────
 async function api(action,body={}){
   try{const r=await fetch(`${API}?action=${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return await r.json();}
   catch(e){return{error:e.message};}
@@ -212,7 +271,7 @@ async function apiGet(action,params={}){
   catch(e){return[];}
 }
 
-// Collections
+// ── Collections ───────────────────────────────────────────────────────────────
 async function loadCollections(){
   const cols=await apiGet(IS_ADMIN?'collections_all':'collections_active');
   const sel=document.getElementById('col-select');
@@ -237,8 +296,7 @@ async function loadCollections(){
       document.getElementById('join-form').style.display='none';
       document.getElementById('v-info').style.display='flex';
       document.getElementById('disp-vname').textContent=myName;
-      document.getElementById('btn-locate').style.display='block';
-      setMyStatus('idle'); startGPS();
+      showMapButtons(); setMyStatus('idle'); startGPS();
     }
   }
 }
@@ -253,7 +311,7 @@ document.getElementById('col-select').addEventListener('change',function(){
   if(currentColId) pollState();
 });
 
-// Polling
+// ── Polling ───────────────────────────────────────────────────────────────────
 let pollTimer=null;
 function startPolling(){if(pollTimer)clearInterval(pollTimer);pollState();pollTimer=setInterval(pollState,POLL_MS);}
 async function pollState(){
@@ -270,7 +328,7 @@ async function pollState(){
   setTimeout(()=>pd.classList.remove('on'),400);
 }
 
-// Join
+// ── Join ──────────────────────────────────────────────────────────────────────
 if(myName) document.getElementById('vname-in').value=myName;
 document.getElementById('join-btn').addEventListener('click',joinVehicle);
 document.getElementById('vname-in').addEventListener('keydown',e=>{if(e.key==='Enter')joinVehicle();});
@@ -287,17 +345,21 @@ async function joinVehicle(){
   document.getElementById('join-form').style.display='none';
   document.getElementById('v-info').style.display='flex';
   document.getElementById('disp-vname').textContent=myName;
-  document.getElementById('btn-locate').style.display='block';
-  setMyStatus('idle'); notify(`${myName} verbunden`,'g');
+  showMapButtons(); setMyStatus('idle');
+  notify(`${myName} verbunden`,'g');
   startGPS(); await requestWakeLock();
 }
 
+function showMapButtons(){
+  document.getElementById('btn-locate').style.display='block';
+  document.getElementById('btn-fit-all').style.display='block';
+}
 function setMyStatus(s){
   const el=document.getElementById('disp-vs');
   el.className=`vs ${s}`; el.textContent={idle:'Inaktiv',driving:'Fährt',paused:'Pausiert'}[s]||s;
 }
 
-// GPS
+// ── GPS ───────────────────────────────────────────────────────────────────────
 let gpsInit=false;
 function startGPS(){
   if(!navigator.geolocation){document.getElementById('gps-txt').textContent='GPS nicht verfügbar';return;}
@@ -311,8 +373,7 @@ function startGPS(){
       const acc=Math.round(pos.coords.accuracy);
       document.getElementById('gdot').className='gdot on';
       document.getElementById('gps-txt').textContent=`${myLat.toFixed(5)}, ${myLng.toFixed(5)} ±${acc}m`;
-      // FIX: collection_id mitsenden
-      if(isJoined) api('vehicle_position',{token:myToken,lat:myLat,lng:myLng,collection_id:currentColId});
+      if(isJoined) sendGPS(myLat, myLng);  // via Service Worker
       if(!gpsInit){map.setView([myLat,myLng],15);gpsInit=true;}
     },
     err=>{
@@ -324,13 +385,13 @@ function startGPS(){
   );
 }
 
-// Render
+// ── Render ────────────────────────────────────────────────────────────────────
 function renderAll(){
   renderRoutes(); renderRouteList(); renderVehicleMarkers(); renderVehicleList(); updateStats();
   if(isJoined){const me=vehicles.find(v=>v.token===myToken);if(me)setMyStatus(me.status);}
 }
 
-// Routen auf Karte – GRÜN/ROT Splitting
+// ── Routen: Rot (offen) + Grün (abgefahren) ──────────────────────────────────
 function renderRoutes(){
   routes.forEach(route=>{
     if(routeLayers[route.id]) routeLayers[route.id].forEach(l=>map.removeLayer(l));
@@ -338,39 +399,62 @@ function renderRoutes(){
     const coords=route.coordinates, layers=[];
 
     if(route.status==='pending'){
-      layers.push(L.polyline(coords,{color:route.color,weight:3,opacity:0.65,dashArray:'6,5',lineCap:'round'}));
+      // Noch nicht gestartet: gestrichelt in Routenfarbe
+      layers.push(L.polyline(coords,{color:route.color,weight:3,opacity:0.55,dashArray:'6,5',lineCap:'round'}));
+
     } else if(route.status==='completed'){
+      // Komplett abgefahren: ganz grün
       layers.push(L.polyline(coords,{color:'#a8ff3e',weight:4,opacity:0.9,lineCap:'round'}));
+
     } else if(route.status==='active'||route.status==='paused'){
       const pi=Math.max(0,Math.floor((coords.length-1)*route.progress/100));
-      const done=coords.slice(0,pi+1), todo=coords.slice(pi);
-      if(done.length>1) layers.push(L.polyline(done,{color:'#a8ff3e',weight:5,opacity:1,lineCap:'round'}));
-      if(todo.length>1) layers.push(L.polyline(todo,{
-        color:'#ff4444',weight:4,opacity:0.9,
-        dashArray:route.status==='paused'?'8,5':null,lineCap:'round'
-      }));
+      const done=coords.slice(0,pi+1);
+      const todo=coords.slice(pi);
+
+      // Abgefahrener Teil: GRÜN (solide)
+      if(done.length>1){
+        layers.push(L.polyline(done,{color:'#a8ff3e',weight:5,opacity:1,lineCap:'round'}));
+      }
+      // Noch offener Teil: ROT (gestrichelt wenn pausiert)
+      if(todo.length>1){
+        layers.push(L.polyline(todo,{
+          color:'#ff4444',weight:4,opacity:0.9,
+          dashArray:route.status==='paused'?'8,5':null,
+          lineCap:'round'
+        }));
+      }
     }
 
-    const f=coords[0], l=coords[coords.length-1];
+    // Start/End Punkte
+    const f=coords[0], la=coords[coords.length-1];
     layers.push(L.circleMarker(f,{radius:7,fillColor:route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1})
       .bindTooltip('Start: '+route.name,{className:'rtt',direction:'right'}));
-    layers.push(L.circleMarker(l,{radius:7,fillColor:route.status==='completed'?'#a8ff3e':route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1})
+    layers.push(L.circleMarker(la,{radius:7,fillColor:route.status==='completed'?'#a8ff3e':route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1})
       .bindTooltip('Ziel: '+route.name,{className:'rtt',direction:'right'}));
 
     layers.forEach(l=>l.addTo(map));
-    if(layers[0]&&layers[0].bindTooltip)
-      layers[0].bindTooltip(`<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,{permanent:false,direction:'top',className:'rtt'});
+    if(layers[0]) layers[0].bindTooltip(
+      `<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,
+      {permanent:false,direction:'top',className:'rtt'}
+    );
     routeLayers[route.id]=layers;
   });
 }
 
-// Fahrzeug-Marker
+// ── Fahrzeug-Marker: Standard nur eigenes ────────────────────────────────────
 function renderVehicleMarkers(){
   const ids=new Set(vehicles.map(v=>v.token));
-  Object.keys(vehicleMarkers).forEach(id=>{if(!ids.has(id)){map.removeLayer(vehicleMarkers[id]);delete vehicleMarkers[id];}});
+  Object.keys(vehicleMarkers).forEach(id=>{
+    if(!ids.has(id)){map.removeLayer(vehicleMarkers[id]);delete vehicleMarkers[id];}
+  });
   vehicles.forEach(v=>{
     if(v.lat===null||v.lng===null) return;
-    const self=v.token===myToken, col=self?'#ffd700':v.status==='paused'?'#ff6b35':'#00d4ff', sz=self?18:12;
+    const self=v.token===myToken;
+    if(!showAllVehicles&&!self){
+      if(vehicleMarkers[v.token]){map.removeLayer(vehicleMarkers[v.token]);delete vehicleMarkers[v.token];}
+      return;
+    }
+    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':'#00d4ff', sz=self?18:12;
     const icon=L.divIcon({className:'',
       html:`<div style="width:${sz}px;height:${sz}px;background:${col};border:2px solid ${self?'#fff':'rgba(255,255,255,.7)'};border-radius:50%;box-shadow:0 0 ${self?12:6}px ${col}"></div>`,
       iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
@@ -384,7 +468,7 @@ function renderVehicleMarkers(){
   });
 }
 
-// Routenliste
+// ── Routen-Liste ──────────────────────────────────────────────────────────────
 function renderRouteList(){
   const c=document.getElementById('route-list'); c.innerHTML='';
   if(!routes.length){c.innerHTML='<p style="color:var(--muted);font-size:12px;font-family:var(--font-mono);padding:4px">Keine Routen</p>';return;}

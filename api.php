@@ -76,10 +76,7 @@ try {
         $rows=db_rows("SELECT cr.*,rt.name as template_name FROM collection_routes cr
                        LEFT JOIN route_templates rt ON rt.id=cr.template_id
                        WHERE cr.collection_id=? ORDER BY cr.sort_order,cr.name",[$cid]);
-        foreach ($rows as &$r) {
-            $r['coordinates']=json_decode($r['coordinates'],true);
-            $r['visible']=(bool)$r['visible'];
-        }
+        foreach ($rows as &$r) { $r['coordinates']=json_decode($r['coordinates'],true); $r['visible']=(bool)$r['visible']; }
         json_response($rows);
 
     case 'col_route_add':
@@ -87,8 +84,7 @@ try {
         $cid=$data['collection_id']??''; $name=trim($data['name']??'');
         $color=$data['color']??'#00d4ff'; $coords=$data['coordinates']??[]; $tid=$data['template_id']?:null;
         if (!$cid||!$name||empty($coords)) error_response('Pflichtfelder fehlen');
-        $id=new_id();
-        $sort=(int)db_val("SELECT COUNT(*) FROM collection_routes WHERE collection_id=?",[$cid]);
+        $id=new_id(); $sort=(int)db_val("SELECT COUNT(*) FROM collection_routes WHERE collection_id=?",[$cid]);
         db_run("INSERT INTO collection_routes (id,collection_id,template_id,name,color,coordinates,sort_order) VALUES (?,?,?,?,?,?,?)",
                [$id,$cid,$tid,$name,$color,json_encode($coords),$sort]);
         json_response(['ok'=>true,'id'=>$id]);
@@ -100,7 +96,6 @@ try {
         db_run("DELETE FROM collection_routes WHERE id=?",[$id]);
         json_response(['ok'=>true]);
 
-    // FIX: JSON_LENGTH entfernt – wird manuell gezählt
     case 'templates_list':
         $rows=db_rows("SELECT id,name,color,description,created_at FROM route_templates ORDER BY name");
         foreach ($rows as &$r) {
@@ -182,16 +177,12 @@ try {
                [$token,$name,$user_id,$cid]);
         json_response(['token'=>$token,'name'=>$name,'status'=>'idle']);
 
-    // FIX: collection_id wird jetzt mitgespeichert → Fahrzeug erscheint auf Karte
     case 'vehicle_position':
-        $token=$data['token']??'';
-        $lat=(float)($data['lat']??0);
-        $lng=(float)($data['lng']??0);
+        $token=$data['token']??''; $lat=(float)($data['lat']??0); $lng=(float)($data['lng']??0);
         $cid=$data['collection_id']??null;
         if (!$token) error_response('Token fehlt');
         if ($cid) {
-            db_run("UPDATE vehicles SET lat=?,lng=?,active_collection_id=?,last_seen=NOW() WHERE token=?",
-                   [$lat,$lng,$cid,$token]);
+            db_run("UPDATE vehicles SET lat=?,lng=?,active_collection_id=?,last_seen=NOW() WHERE token=?",[$lat,$lng,$cid,$token]);
         } else {
             db_run("UPDATE vehicles SET lat=?,lng=?,last_seen=NOW() WHERE token=?",[$lat,$lng,$token]);
         }
@@ -200,7 +191,8 @@ try {
             $r=db_row("SELECT * FROM collection_routes WHERE id=?",[$v['active_route_id']]);
             if ($r) {
                 $coords=json_decode($r['coordinates'],true);
-                $progress=calculate_progress($lat,$lng,$coords);
+                // Aktuellen Progress übergeben – geht nie zurück
+                $progress=calculate_progress($lat,$lng,$coords,(int)$r['progress']);
                 if ($progress>=98) {
                     db_run("UPDATE collection_routes SET status='completed',progress=100 WHERE id=?",[$r['id']]);
                     db_run("UPDATE vehicles SET status='idle',active_route_id=NULL WHERE token=?",[$token]);
@@ -241,4 +233,28 @@ try {
     case 'route_complete':
         $token=$data['token']??''; $rid=$data['route_id']??'';
         if (!$rid) error_response('route_id fehlt');
-        db_run("UPDATE colle
+        db_run("UPDATE collection_routes SET status='completed',progress=100 WHERE id=?",[$rid]);
+        if ($token) db_run("UPDATE vehicles SET status='idle',active_route_id=NULL,last_seen=NOW() WHERE token=?",[$token]);
+        json_response(['ok'=>true]);
+
+    case 'route_reset':
+        if (!$admin) error_response('Kein Zugriff', 403);
+        $rid=$data['route_id']??''; if (!$rid) error_response('route_id fehlt');
+        db_run("UPDATE vehicles SET status='idle',active_route_id=NULL WHERE active_route_id=?",[$rid]);
+        db_run("UPDATE collection_routes SET status='pending',progress=0,assigned_token=NULL WHERE id=?",[$rid]);
+        json_response(['ok'=>true]);
+
+    case 'route_toggle':
+        if (!$admin) error_response('Kein Zugriff', 403);
+        $rid=$data['route_id']??''; if (!$rid) error_response('route_id fehlt');
+        db_run("UPDATE collection_routes SET visible=NOT visible WHERE id=?",[$rid]);
+        json_response(['ok'=>true]);
+
+    default:
+        error_response('Unbekannte Aktion: '.htmlspecialchars($action),404);
+    }
+} catch (PDOException $e) {
+    error_response('DB-Fehler: '.$e->getMessage(),500);
+} catch (Exception $e) {
+    error_response('Fehler: '.$e->getMessage(),500);
+}
