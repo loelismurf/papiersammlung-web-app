@@ -447,10 +447,15 @@ function renderVehicleMarkers(){
       if(vehicleMarkers[v.token]){map.removeLayer(vehicleMarkers[v.token]);delete vehicleMarkers[v.token];}
       return;
     }
-    // Gesnappte Position verwenden wenn verfügbar
+    // Snap nur anwenden wenn Position noch zur gecachten Quellposition passt.
+    // Sonst direkt rohe GPS-Position → Marker bewegt sich sofort.
+    // Eigenes Fahrzeug (self) wird nie gesnapped – GPS ist bereits genau genug.
     const snap=vehicleSnap[v.token];
-    const dLat=snap?snap.lat:v.lat;
-    const dLng=snap?snap.lng:v.lng;
+    const snapFresh = !self && snap
+      && Math.abs(snap.srcLat-v.lat) < SNAP_THRESHOLD
+      && Math.abs(snap.srcLng-v.lng) < SNAP_THRESHOLD;
+    const dLat = snapFresh ? snap.lat : v.lat;
+    const dLng = snapFresh ? snap.lng : v.lng;
 
     const col=self?'#ffd700':v.status==='paused'?'#ff6b35':'#00d4ff', sz=self?18:12;
     const icon=L.divIcon({className:'',
