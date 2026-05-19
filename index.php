@@ -351,14 +351,19 @@ if('serviceWorker' in navigator){
 }
 function sendGPS(lat, lng) {
   const payload = {token:myToken, lat, lng, collection_id:currentColId};
-  // OSRM-Snap mitschicken wenn frisch im Cache (Client hat ihn für Display schon)
-  // → Server nutzt Strassenposition statt rohes GPS für Segment-Check
+  // OSRM-Snap mitschicken wenn im Cache vorhanden
+  // Threshold 0.002° (~170m Lat / ~120m Lng @47°N) – weit genug dass bei 30km/h
+  // alle 2s (= ~17m Bewegung) der Snap immer noch mitgeschickt wird.
+  // Server nutzt Snap-Position (auf Strasse korrigiert) für genauere Segment-Erkennung.
   const c = vehicleSnap[myToken];
-  if (c && Math.abs(c.srcLat-lat)<0.0003 && Math.abs(c.srcLng-lng)<0.0003) {
+  if (c && Math.abs(c.srcLat-lat)<0.002 && Math.abs(c.srcLng-lng)<0.002) {
     payload.snap_lat = c.lat;
     payload.snap_lng = c.lng;
   }
-  api('vehicle_position', payload);
+  api('vehicle_position', payload).then(res => {
+    // Fehler loggen (z.B. DB-Problem) – Client ignoriert normalerweise die Antwort
+    if (res && res.error) console.warn('[GPS] vehicle_position error:', res.error);
+  }).catch(()=>{});
   // Snap im Hintergrund aktualisieren wenn veraltet
   if (!c || Math.abs(c.srcLat-lat)>0.0001 || Math.abs(c.srcLng-lng)>0.0001) {
     fetch(`${OSRM}/nearest/v1/driving/${lng},${lat}?number=1`)

@@ -182,11 +182,15 @@ try {
         json_response(['token'=>$token,'name'=>$name,'status'=>'idle']);
 
     case 'vehicle_position':
-        $token = $data['token']??'';
-        $lat   = (float)($data['lat']??0);
-        $lng   = (float)($data['lng']??0);
-        $cid   = $data['collection_id']??null;
+        $token    = $data['token']??'';
+        $lat      = (float)($data['lat']??0);
+        $lng      = (float)($data['lng']??0);
+        $cid      = $data['collection_id']??null;
+        $debugMode = isset($_GET['debug']);
         if (!$token) error_response('Token fehlt');
+
+        // Sicherstellen dass driven_segments Spalte existiert (Self-Healing)
+        ensure_driven_segments_column();
 
         // Fahrzeug VOR dem Update lesen → enthält vorherige GPS-Position
         $v = db_row("SELECT * FROM vehicles WHERE token=?", [$token]);
@@ -200,44 +204,97 @@ try {
                    [$lat,$lng,$token]);
         }
 
+        $debugInfo = [
+            'token'         => substr($token,0,8).'...',
+            'gps'           => ['lat'=>$lat,'lng'=>$lng],
+            'vehicle_status'=> $v['status']??'(nicht gefunden)',
+            'active_route'  => $v['active_route_id']??null,
+            'tracking'      => false,
+        ];
+
         // Segment-Tracking nur wenn Fahrzeug aktiv eine Route fährt
         if ($v && $v['active_route_id'] && $v['status']==='driving') {
             $r = db_row("SELECT * FROM collection_routes WHERE id=?", [$v['active_route_id']]);
             if ($r) {
                 $coords = json_decode($r['coordinates'], true);
-                $driven = $r['driven_segments']
+                $nCoords = count($coords);
+                $driven  = ($r['driven_segments'] !== null)
                     ? json_decode($r['driven_segments'], true)
-                    : init_segments(count($coords));
+                    : init_segments($nCoords);
+
+                // Driven-Array auf korrekte Länge bringen falls Route geändert wurde
+                $expectedLen = max(0, $nCoords - 1);
+                if (count($driven) !== $expectedLen) {
+                    $driven = array_pad(array_slice($driven, 0, $expectedLen), $expectedLen, false);
+                }
 
                 // Prüfposition: Client-Snap (OSRM) wenn vorhanden → genauer
+                // Snap = GPS auf nächste Strasse korrigiert, reduziert GPS-Rauschen
                 $hasSnap  = isset($data['snap_lat'], $data['snap_lng'])
-                            && $data['snap_lat'] != 0 && $data['snap_lng'] != 0;
+                            && abs((float)$data['snap_lat']) > 0.001
+                            && abs((float)$data['snap_lng']) > 0.001;
                 $checkLat = $hasSnap ? (float)$data['snap_lat'] : $lat;
                 $checkLng = $hasSnap ? (float)$data['snap_lng'] : $lng;
-                $tolerance = $hasSnap ? 15.0 : 25.0;
 
-                // Vorherige GPS-Position für Pfad-Interpolation
-                // → schliesst Lücken zwischen GPS-Updates (30km/h = ~40m alle 5s)
+                // Toleranz: Abstand GPS -> Route in Metern
+                // Mit Snap: 20m (genauere Position), ohne: 30m (GPS-Rauschen ~15m + Puffer)
+                $tolerance = $hasSnap ? 20.0 : 30.0;
+
+                // Vorherige GPS-Position (aus DB, vor diesem Update gelesen)
                 $prevLat = ($v['lat'] !== null) ? (float)$v['lat'] : $checkLat;
                 $prevLng = ($v['lng'] !== null) ? (float)$v['lng'] : $checkLng;
 
+                $drivenBefore = count(array_filter($driven));
+
+                // === KERN-ALGORITHMUS: Routen-Projektion ===
+                // update_driven_segments projiziert beide GPS-Punkte auf die Route
+                // und markiert alle Segmente dazwischen als abgefahren.
+                // Details in db.php → update_driven_segments()
                 $driven = update_driven_segments(
                     $prevLat, $prevLng,
                     $checkLat, $checkLng,
                     $coords, $driven, $tolerance
                 );
 
-                $progress = progress_from_segments($driven);
+                $drivenAfter = count(array_filter($driven));
+                $progress    = progress_from_segments($driven);
+
+                if ($debugMode) {
+                    // Projektion beider Punkte für Debug-Output berechnen
+                    $curProj  = project_onto_route($checkLat, $checkLng, $coords, $tolerance);
+                    $prevProj = project_onto_route($prevLat,  $prevLng,  $coords, $tolerance * 2.0);
+                    $debugInfo['tracking']     = true;
+                    $debugInfo['has_snap']     = $hasSnap;
+                    $debugInfo['check_pos']    = ['lat'=>$checkLat,'lng'=>$checkLng];
+                    $debugInfo['prev_pos']     = ['lat'=>$prevLat, 'lng'=>$prevLng];
+                    $debugInfo['tolerance_m']  = $tolerance;
+                    $debugInfo['route_coords'] = $nCoords;
+                    $debugInfo['route_segments']= $expectedLen;
+                    $debugInfo['cur_proj']     = $curProj;
+                    $debugInfo['prev_proj']    = $prevProj;
+                    $debugInfo['newly_driven'] = $drivenAfter - $drivenBefore;
+                    $debugInfo['driven_total'] = $drivenAfter;
+                    $debugInfo['progress']     = $progress.'%';
+                    // Erste 20 Segmente als Übersicht
+                    $debugInfo['driven_map']   = array_slice($driven, 0, 20);
+                }
 
                 if (all_segments_driven($driven)) {
                     db_run("UPDATE collection_routes SET status='completed',progress=100,driven_segments=? WHERE id=?",
-                           [json_encode($driven),$r['id']]);
+                           [json_encode(array_values($driven)),$r['id']]);
                     db_run("UPDATE vehicles SET status='idle',active_route_id=NULL WHERE token=?", [$token]);
+                    if ($debugMode) $debugInfo['route_completed'] = true;
                 } else {
                     db_run("UPDATE collection_routes SET progress=?,driven_segments=? WHERE id=?",
-                           [$progress,json_encode($driven),$r['id']]);
+                           [$progress,json_encode(array_values($driven)),$r['id']]);
                 }
+            } else {
+                if ($debugMode) $debugInfo['error'] = 'Route nicht gefunden: '.$v['active_route_id'];
             }
+        }
+
+        if ($debugMode) {
+            json_response(['ok'=>true,'debug'=>$debugInfo]);
         }
         json_response(['ok'=>true]);
 
