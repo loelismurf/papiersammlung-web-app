@@ -351,30 +351,23 @@ if('serviceWorker' in navigator){
 }
 function sendGPS(lat, lng) {
   const payload = {token:myToken, lat, lng, collection_id:currentColId};
-
-  // Gesnappte Strassenposition mitschicken wenn frisch im Cache vorhanden.
-  // Server nutzt sie für genaueren Segment-Check (10m Toleranz statt 20m).
-  const cached = vehicleSnap[myToken];
-  const fresh  = cached
-    && Math.abs(cached.srcLat - lat) < 0.0003  // ~30m
-    && Math.abs(cached.srcLng - lng) < 0.0003;
-  if (fresh) {
-    payload.snap_lat = cached.lat;
-    payload.snap_lng = cached.lng;
+  // OSRM-Snap mitschicken wenn frisch im Cache (Client hat ihn für Display schon)
+  // → Server nutzt Strassenposition statt rohes GPS für Segment-Check
+  const c = vehicleSnap[myToken];
+  if (c && Math.abs(c.srcLat-lat)<0.0003 && Math.abs(c.srcLng-lng)<0.0003) {
+    payload.snap_lat = c.lat;
+    payload.snap_lng = c.lng;
   }
-
   api('vehicle_position', payload);
-
-  // Snap im Hintergrund aktualisieren wenn Cache fehlt oder veraltet
-  if (!fresh) {
+  // Snap im Hintergrund aktualisieren wenn veraltet
+  if (!c || Math.abs(c.srcLat-lat)>0.0001 || Math.abs(c.srcLng-lng)>0.0001) {
     fetch(`${OSRM}/nearest/v1/driving/${lng},${lat}?number=1`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.code === 'Ok' && d.waypoints?.[0]) {
-          const [sLng, sLat] = d.waypoints[0].location;
-          vehicleSnap[myToken] = {srcLat:lat, srcLng:lng, lat:sLat, lng:sLng};
+      .then(r=>r.json()).then(d=>{
+        if(d.code==='Ok'&&d.waypoints?.[0]){
+          const[sl,slt]=d.waypoints[0].location;
+          vehicleSnap[myToken]={srcLat:lat,srcLng:lng,lat:slt,lng:sl};
         }
-      }).catch(() => {});
+      }).catch(()=>{});
   }
 }
 
