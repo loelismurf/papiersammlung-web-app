@@ -295,7 +295,7 @@ let myName=localStorage.getItem('ps_name')||null;
 let isJoined=false, currentColId=null;
 let myLat=null, myLng=null, wakeLock=null;
 let routes=[], vehicles=[];
-const routeLayers={}, vehicleMarkers={};
+const routeLayers={}, vehicleMarkers={}, vehicleMarkerProps={};
 
 // ── Mobile Sidebar Toggle ─────────────────────────────────────────────────────
 let sidebarCollapsed = false;
@@ -517,27 +517,51 @@ function renderRoutes(){
   });
 }
 
+function makeVehicleIcon(col, sz, self){
+  return L.divIcon({className:'',html:`<div style="width:${sz}px;height:${sz}px;background:${col};border:2px solid ${self?'#fff':'rgba(255,255,255,.7)'};border-radius:50%;box-shadow:0 0 ${self?12:6}px ${col}"></div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
+}
+
 function renderVehicleMarkers(){
   const ids=new Set(vehicles.map(v=>v.token));
-  Object.keys(vehicleMarkers).forEach(id=>{ if(!ids.has(id)){map.removeLayer(vehicleMarkers[id]);delete vehicleMarkers[id];} });
+  Object.keys(vehicleMarkers).forEach(id=>{
+    if(!ids.has(id)){map.removeLayer(vehicleMarkers[id]);delete vehicleMarkers[id];delete vehicleMarkerProps[id];}
+  });
   vehicles.forEach(v=>{
     if(v.lat===null||v.lng===null) return;
     const self=v.token===myToken;
-    if(!isVehicleVisible(v)){ if(vehicleMarkers[v.token]){map.removeLayer(vehicleMarkers[v.token]);delete vehicleMarkers[v.token];}return; }
+    if(!isVehicleVisible(v)){
+      if(vehicleMarkers[v.token]){map.removeLayer(vehicleMarkers[v.token]);delete vehicleMarkers[v.token];delete vehicleMarkerProps[v.token];}
+      return;
+    }
     const snap=vehicleSnap[v.token];
     const snapFresh=!self&&snap&&Math.abs(snap.srcLat-v.lat)<SNAP_THRESHOLD&&Math.abs(snap.srcLng-v.lng)<SNAP_THRESHOLD;
     const dLat=snapFresh?snap.lat:v.lat, dLng=snapFresh?snap.lng:v.lng;
     const col=self?'#ffd700':v.status==='paused'?'#ff6b35':'#00d4ff', sz=self?18:12;
-    const icon=L.divIcon({className:'',html:`<div style="width:${sz}px;height:${sz}px;background:${col};border:2px solid ${self?'#fff':'rgba(255,255,255,.7)'};border-radius:50%;box-shadow:0 0 ${self?12:6}px ${col}"></div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
+
     if(vehicleMarkers[v.token]){
+      const prev=vehicleMarkerProps[v.token];
+      if(!prev||prev.col!==col||prev.sz!==sz){
+        // Status/Farbe geändert → Icon neu erstellen (DOM-Element wird ersetzt)
+        vehicleMarkers[v.token].setIcon(makeVehicleIcon(col,sz,self));
+        vehicleMarkerProps[v.token]={col,sz};
+        // Nach setIcon: animated class auf neuem Element setzen (nächster Frame)
+        requestAnimationFrame(()=>{
+          const el=vehicleMarkers[v.token]?.getElement();
+          if(el) el.classList.add('animated');
+        });
+      }
+      // Position updaten – animated class ist auf bestehendem Element → CSS-Transition läuft
       const el=vehicleMarkers[v.token].getElement();
-      if(el) el.classList.add('animated');
-      vehicleMarkers[v.token].setLatLng([dLat,dLng]); vehicleMarkers[v.token].setIcon(icon);
+      if(el&&!el.classList.contains('animated')) el.classList.add('animated');
+      vehicleMarkers[v.token].setLatLng([dLat,dLng]);
       vehicleMarkers[v.token].getTooltip()?.setContent(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`);
     } else {
-      const marker=L.marker([dLat,dLng],{icon,zIndexOffset:self?1000:0}).addTo(map)
+      const marker=L.marker([dLat,dLng],{icon:makeVehicleIcon(col,sz,self),zIndexOffset:self?1000:0}).addTo(map)
         .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`,{permanent:self,direction:'top',offset:[0,-(sz/2+4)],className:'rtt'});
       vehicleMarkers[v.token]=marker;
+      vehicleMarkerProps[v.token]={col,sz};
+      // Kurze Verzögerung: erst nach erstem Paint animated aktivieren
+      // damit der initiale Positionssprung nicht animiert wird
       setTimeout(()=>{const el=marker.getElement();if(el)el.classList.add('animated');},200);
     }
   });

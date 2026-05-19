@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Installation – Papiersammlung</title>
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <style>
   body{font-family:monospace;background:#0a0c0f;color:#c8d4e0;padding:40px;max-width:740px}
   h1{color:#00d4ff;letter-spacing:3px;margin-bottom:6px}
@@ -20,7 +20,7 @@
 </head>
 <body>
 <h1>⚙ PAPIERSAMMLUNG</h1>
-<div class="sub">INSTALLATION / AKTUALISIERUNG</div>
+<div class="sub">INSTALLATION / AKTUALISIERUNG · v3</div>
 <?php
 // ── DB-Zugangsdaten direkt hier eintragen ─────────────────────────────────────
 define('DB_HOST', 'localhost');           // ← anpassen
@@ -50,7 +50,7 @@ try {
     step(true, 'Datenbankverbindung erfolgreich');
 
     // ── TABELLEN ERSTELLEN ────────────────────────────────────────────────────
-    section('Tabellen');
+    section('Tabellen erstellen / prüfen');
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS users (
         id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -80,6 +80,7 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     step(true, 'Tabelle `collections`');
 
+    // collection_routes: driven_segments ist fester Bestandteil seit v2
     $pdo->exec("CREATE TABLE IF NOT EXISTS collection_routes (
         id              VARCHAR(32)  PRIMARY KEY,
         collection_id   VARCHAR(32)  NOT NULL,
@@ -92,7 +93,7 @@ try {
         progress        TINYINT UNSIGNED NOT NULL DEFAULT 0,
         visible         TINYINT(1)   NOT NULL DEFAULT 1,
         sort_order      INT          NOT NULL DEFAULT 0,
-        driven_segments LONGTEXT     DEFAULT NULL COMMENT 'JSON bool[] pro Segment',
+        driven_segments LONGTEXT     DEFAULT NULL COMMENT 'JSON bool[] pro Segment – Routen-Projektion v3',
         INDEX idx_collection (collection_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     step(true, 'Tabelle `collection_routes` (inkl. driven_segments)');
@@ -110,39 +111,46 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     step(true, 'Tabelle `vehicles`');
 
-    // ── FEHLENDE SPALTEN NACHFÜHREN (Aktualisierung bestehender DB) ───────────
-    section('Spalten aktualisieren');
+    // ── FEHLENDE SPALTEN NACHFÜHREN (idempotentes Upgrade bestehender DB) ────────
+    // Jede neue Spalte hier eintragen. Wird bei CREATE TABLE IF NOT EXISTS
+    // bereits vorhandener Tabelle nicht automatisch hinzugefügt.
+    section('Spalten-Upgrade (bestehende DB)');
 
-    $cols = [
+    $requiredCols = [
         'collection_routes' => [
-            'driven_segments' => 'LONGTEXT DEFAULT NULL',
+            // v2: Segment-Tracking
+            'driven_segments' => "LONGTEXT DEFAULT NULL COMMENT 'JSON bool[] pro Segment'",
         ],
         'vehicles' => [
+            // v1.1: Fahrzeug-Zuordnung
             'user_id'              => 'INT DEFAULT NULL',
             'active_collection_id' => 'VARCHAR(32) DEFAULT NULL',
             'active_route_id'      => 'VARCHAR(32) DEFAULT NULL',
         ],
     ];
 
-    foreach ($cols as $table => $columns) {
+    foreach ($requiredCols as $table => $columns) {
         foreach ($columns as $col => $def) {
             $exists = $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS
-                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='$table' AND COLUMN_NAME='$col'")->fetchColumn();
+                WHERE TABLE_SCHEMA=DATABASE()
+                AND TABLE_NAME='$table'
+                AND COLUMN_NAME='$col'")->fetchColumn();
             if (!$exists) {
                 $pdo->exec("ALTER TABLE `$table` ADD COLUMN `$col` $def");
-                step(true, "Spalte `$table.$col` hinzugefügt");
+                step(true, "Spalte `$table.$col` hinzugefügt ← NEU");
             } else {
-                step(true, "Spalte `$table.$col` ✓ vorhanden");
+                step(true, "Spalte `$table.$col` ✓");
             }
         }
     }
 
-    // vehicles.status Enum sicherstellen
+    // vehicles.status Enum-Definition sicherstellen
     try {
-        $pdo->exec("ALTER TABLE vehicles MODIFY COLUMN status ENUM('idle','driving','paused','offline') NOT NULL DEFAULT 'idle'");
-        step(true, 'vehicles.status Enum aktuell');
+        $pdo->exec("ALTER TABLE vehicles MODIFY COLUMN status
+                    ENUM('idle','driving','paused','offline') NOT NULL DEFAULT 'idle'");
+        step(true, 'vehicles.status Enum ✓');
     } catch(Exception $e) {
-        step(true, 'vehicles.status – OK');
+        step(true, 'vehicles.status – bereits korrekt');
     }
 
     // ── STANDARD-ADMIN ────────────────────────────────────────────────────────
@@ -151,14 +159,15 @@ try {
     $adminExists = $pdo->query("SELECT COUNT(*) FROM users WHERE role='admin'")->fetchColumn();
     if (!$adminExists) {
         $hash = password_hash('admin123', PASSWORD_DEFAULT);
-        $pdo->prepare("INSERT IGNORE INTO users (username,password_hash,role) VALUES ('admin',?,'admin')")->execute([$hash]);
+        $pdo->prepare("INSERT IGNORE INTO users (username,password_hash,role)
+                       VALUES ('admin',?,'admin')")->execute([$hash]);
         step(true, 'Standard-Admin erstellt: admin / admin123');
         $newAdmin = true;
     } else {
-        step(true, 'Admin-Benutzer vorhanden – kein Reset');
+        step(true, "Admin-Benutzer vorhanden ($adminExists) – kein Reset");
     }
 
-    // ── BEISPIEL-VORLAGEN (nur bei Erstinstallation) ──────────────────────────
+    // ── BEISPIEL-VORLAGEN (nur Erstinstallation) ──────────────────────────────
     section('Beispieldaten');
 
     $tplCount = $pdo->query("SELECT COUNT(*) FROM route_templates")->fetchColumn();
@@ -173,12 +182,12 @@ try {
         foreach ($templates as $t) {
             $stmt->execute([bin2hex(random_bytes(8)),$t['name'],$t['color'],json_encode($t['coords'])]);
         }
-        step(true, count($templates).' Beispiel-Routen-Vorlagen erstellt (Zürich)');
+        step(true, count($templates).' Beispiel-Vorlagen erstellt (Zürich)');
     } else {
-        step(true, "Routen-Vorlagen vorhanden ($tplCount) – keine Beispieldaten eingefügt");
+        step(true, "Vorlagen vorhanden ($tplCount) – übersprungen");
     }
 
-    step(true, '─── Installation abgeschlossen ───');
+    step(true, '─── Installation v3 abgeschlossen ───');
 
 } catch (Exception $e) {
     step(false, 'Fehler: '.$e->getMessage());
@@ -201,10 +210,8 @@ try {
 </div>
 <?php endif; ?>
 <p style="color:#a8ff3e;margin-top:16px">✅ Erfolgreich!</p>
-<p style="color:#ffd700;margin-top:8px">
-  ⚠️ <strong>install.php nach der Installation löschen!</strong>
-</p>
-<a class="btn" href="login.php">→ Zum Login</a>
+<p style="color:#ffd700;margin-top:8px">⚠️ <strong>install.php nach der Installation löschen!</strong></p>
+<a class="btn" href="../login.php">→ Zum Login</a>
 <?php else: ?>
 <p style="color:#ff6b35;margin-top:16px">❌ Fehler – DB-Zugangsdaten in dieser Datei prüfen.</p>
 <?php endif; ?>
