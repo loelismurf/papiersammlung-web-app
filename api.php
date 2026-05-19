@@ -22,9 +22,10 @@ try {
         if (!$cid) { json_response(['routes'=>[],'vehicles'=>[]]); }
         $routes = db_rows("SELECT * FROM collection_routes WHERE collection_id=? ORDER BY sort_order,name", [$cid]);
         foreach ($routes as &$r) {
-            $r['coordinates'] = json_decode($r['coordinates'], true);
-            $r['visible']     = (bool)$r['visible'];
-            $r['progress']    = (int)$r['progress'];
+            $r['coordinates']     = json_decode($r['coordinates'], true);
+            $r['driven_segments'] = $r['driven_segments'] ? json_decode($r['driven_segments'], true) : null;
+            $r['visible']         = (bool)$r['visible'];
+            $r['progress']        = (int)$r['progress'];
         }
         $vehicles = db_rows("SELECT * FROM vehicles
             WHERE status!='offline' AND active_collection_id=?
@@ -76,7 +77,10 @@ try {
         $rows=db_rows("SELECT cr.*,rt.name as template_name FROM collection_routes cr
                        LEFT JOIN route_templates rt ON rt.id=cr.template_id
                        WHERE cr.collection_id=? ORDER BY cr.sort_order,cr.name",[$cid]);
-        foreach ($rows as &$r) { $r['coordinates']=json_decode($r['coordinates'],true); $r['visible']=(bool)$r['visible']; }
+        foreach ($rows as &$r) {
+            $r['coordinates']=json_decode($r['coordinates'],true);
+            $r['visible']=(bool)$r['visible'];
+        }
         json_response($rows);
 
     case 'col_route_add':
@@ -181,23 +185,39 @@ try {
         $token=$data['token']??''; $lat=(float)($data['lat']??0); $lng=(float)($data['lng']??0);
         $cid=$data['collection_id']??null;
         if (!$token) error_response('Token fehlt');
+
+        // Position aktualisieren
         if ($cid) {
             db_run("UPDATE vehicles SET lat=?,lng=?,active_collection_id=?,last_seen=NOW() WHERE token=?",[$lat,$lng,$cid,$token]);
         } else {
             db_run("UPDATE vehicles SET lat=?,lng=?,last_seen=NOW() WHERE token=?",[$lat,$lng,$token]);
         }
+
+        // Segment-Tracking für aktive Route
         $v=db_row("SELECT * FROM vehicles WHERE token=?",[$token]);
-        if ($v&&$v['active_route_id']&&$v['status']==='driving') {
+        if ($v && $v['active_route_id'] && $v['status']==='driving') {
             $r=db_row("SELECT * FROM collection_routes WHERE id=?",[$v['active_route_id']]);
             if ($r) {
-                $coords=json_decode($r['coordinates'],true);
-                // Aktuellen Progress übergeben – geht nie zurück
-                $progress=calculate_progress($lat,$lng,$coords,(int)$r['progress']);
-                if ($progress>=98) {
-                    db_run("UPDATE collection_routes SET status='completed',progress=100 WHERE id=?",[$r['id']]);
-                    db_run("UPDATE vehicles SET status='idle',active_route_id=NULL WHERE token=?",[$token]);
+                $coords = json_decode($r['coordinates'], true);
+                $numSegs = count($coords) - 1;
+
+                // Gefahrene Segmente laden oder initialisieren
+                $driven = $r['driven_segments']
+                    ? json_decode($r['driven_segments'], true)
+                    : init_segments(count($coords));
+
+                // Segmente aktualisieren (5m Toleranz, jedes Segment einzeln)
+                $driven   = update_driven_segments($lat, $lng, $coords, $driven);
+                $progress = progress_from_segments($driven);
+
+                if (all_segments_driven($driven)) {
+                    // Alle Segmente abgefahren → Route komplett
+                    db_run("UPDATE collection_routes SET status='completed', progress=100, driven_segments=? WHERE id=?",
+                           [json_encode($driven), $r['id']]);
+                    db_run("UPDATE vehicles SET status='idle', active_route_id=NULL WHERE token=?", [$token]);
                 } else {
-                    db_run("UPDATE collection_routes SET progress=? WHERE id=?",[$progress,$r['id']]);
+                    db_run("UPDATE collection_routes SET progress=?, driven_segments=? WHERE id=?",
+                           [$progress, json_encode($driven), $r['id']]);
                 }
             }
         }
@@ -211,6 +231,14 @@ try {
             db_run("UPDATE collection_routes SET status='pending',assigned_token=NULL WHERE id=? AND status='active'",[$v['active_route_id']]);
         $route=db_row("SELECT * FROM collection_routes WHERE id=?",[$rid]);
         if (!$route) error_response('Route nicht gefunden');
+
+        // Segmente initialisieren falls noch nicht vorhanden
+        $coords=json_decode($route['coordinates'],true);
+        if (!$route['driven_segments']) {
+            db_run("UPDATE collection_routes SET driven_segments=? WHERE id=?",
+                   [json_encode(init_segments(count($coords))), $rid]);
+        }
+
         db_run("UPDATE collection_routes SET status='active',assigned_token=? WHERE id=?",[$token,$rid]);
         db_run("UPDATE vehicles SET status='driving',active_route_id=?,active_collection_id=?,last_seen=NOW() WHERE token=?",
                [$rid,$route['collection_id'],$token]);
@@ -233,7 +261,16 @@ try {
     case 'route_complete':
         $token=$data['token']??''; $rid=$data['route_id']??'';
         if (!$rid) error_response('route_id fehlt');
-        db_run("UPDATE collection_routes SET status='completed',progress=100 WHERE id=?",[$rid]);
+        // Manuell als erledigt markieren: alle Segmente auf true setzen
+        $route=db_row("SELECT coordinates FROM collection_routes WHERE id=?",[$rid]);
+        if ($route) {
+            $coords=json_decode($route['coordinates'],true);
+            $allDriven=array_fill(0,max(0,count($coords)-1),true);
+            db_run("UPDATE collection_routes SET status='completed',progress=100,driven_segments=? WHERE id=?",
+                   [json_encode($allDriven),$rid]);
+        } else {
+            db_run("UPDATE collection_routes SET status='completed',progress=100 WHERE id=?",[$rid]);
+        }
         if ($token) db_run("UPDATE vehicles SET status='idle',active_route_id=NULL,last_seen=NOW() WHERE token=?",[$token]);
         json_response(['ok'=>true]);
 
@@ -241,7 +278,8 @@ try {
         if (!$admin) error_response('Kein Zugriff', 403);
         $rid=$data['route_id']??''; if (!$rid) error_response('route_id fehlt');
         db_run("UPDATE vehicles SET status='idle',active_route_id=NULL WHERE active_route_id=?",[$rid]);
-        db_run("UPDATE collection_routes SET status='pending',progress=0,assigned_token=NULL WHERE id=?",[$rid]);
+        // Alle Segmente zurücksetzen
+        db_run("UPDATE collection_routes SET status='pending',progress=0,assigned_token=NULL,driven_segments=NULL WHERE id=?",[$rid]);
         json_response(['ok'=>true]);
 
     case 'route_toggle':

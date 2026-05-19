@@ -1,26 +1,57 @@
 <!DOCTYPE html>
 <html lang="de">
-<head><meta charset="UTF-8"><title>Installation – Papiersammlung</title>
+<head>
+<meta charset="UTF-8">
+<title>Installation – Papiersammlung</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <style>
-  body{font-family:monospace;background:#0a0c0f;color:#c8d4e0;padding:40px;max-width:700px}
-  h1{color:#00d4ff;letter-spacing:3px;margin-bottom:24px}
-  .ok{color:#a8ff3e}.err{color:#ff6b35}.info{color:#ffd700}
-  pre{background:#0f1216;border:1px solid #1e2530;padding:16px;border-radius:4px;line-height:2}
-  .btn{display:inline-block;margin-top:20px;background:#00d4ff;color:#0a0c0f;border:none;
-       padding:12px 24px;font-family:monospace;font-size:14px;font-weight:bold;
-       cursor:pointer;border-radius:4px;text-decoration:none}
+  body{font-family:monospace;background:#0a0c0f;color:#c8d4e0;padding:40px;max-width:740px}
+  h1{color:#00d4ff;letter-spacing:3px;margin-bottom:6px}
+  .sub{font-size:11px;color:#4a5a6a;letter-spacing:2px;margin-bottom:28px}
+  .ok{color:#a8ff3e}.err{color:#ff6b35}.info{color:#ffd700}.sec{color:#00d4ff}
+  pre{background:#0f1216;border:1px solid #1e2530;padding:16px;border-radius:4px;line-height:2.1;margin-bottom:16px}
   .box{background:#0f1216;border:1px solid #2a3340;border-left:3px solid #ffd700;
-       padding:16px;margin-top:20px;border-radius:4px}
-</style></head><body>
-<h1>⚙ PAPIERSAMMLUNG INSTALLATION</h1>
+       padding:16px;margin-top:20px;border-radius:4px;line-height:1.9}
+  a.btn{display:inline-block;margin-top:20px;background:#00d4ff;color:#0a0c0f;border:none;
+        padding:12px 28px;font-family:monospace;font-size:14px;font-weight:bold;
+        cursor:pointer;border-radius:4px;text-decoration:none}
+  h2{font-size:13px;color:#4a5a6a;letter-spacing:2px;margin:20px 0 4px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<h1>⚙ PAPIERSAMMLUNG</h1>
+<div class="sub">INSTALLATION / AKTUALISIERUNG</div>
 <?php
-require_once __DIR__ . '/db.php';
-$steps = []; $ok = true;
-try {
-    $pdo = db();
-    $steps[] = ['ok','Datenbankverbindung erfolgreich'];
+// ── DB-Zugangsdaten direkt hier eintragen ─────────────────────────────────────
+define('DB_HOST', 'localhost');           // ← anpassen
+define('DB_NAME', 'dein_datenbankname'); // ← anpassen
+define('DB_USER', 'dein_benutzer');      // ← anpassen
+define('DB_PASS', 'dein_passwort');      // ← anpassen
 
-    // Users
+$steps = []; $hasErr = false; $newAdmin = false;
+
+function step(bool $ok, string $msg): void {
+    global $steps, $hasErr;
+    $steps[] = [$ok, $msg];
+    if (!$ok) $hasErr = true;
+}
+function section(string $title): void {
+    global $steps;
+    $steps[] = ['sec', $title];
+}
+
+try {
+    $pdo = new PDO(
+        "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
+        DB_USER, DB_PASS,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+    );
+    step(true, 'Datenbankverbindung erfolgreich');
+
+    // ── TABELLEN ERSTELLEN ────────────────────────────────────────────────────
+    section('Tabellen');
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS users (
         id            INT AUTO_INCREMENT PRIMARY KEY,
         username      VARCHAR(50)  UNIQUE NOT NULL,
@@ -28,9 +59,8 @@ try {
         role          ENUM('admin','user') NOT NULL DEFAULT 'user',
         created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $steps[] = ['ok','Tabelle `users` erstellt'];
+    step(true, 'Tabelle `users`');
 
-    // Route templates
     $pdo->exec("CREATE TABLE IF NOT EXISTS route_templates (
         id          VARCHAR(32)  PRIMARY KEY,
         name        VARCHAR(100) NOT NULL,
@@ -39,9 +69,8 @@ try {
         description TEXT,
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $steps[] = ['ok','Tabelle `route_templates` erstellt'];
+    step(true, 'Tabelle `route_templates`');
 
-    // Collections (Papiersammlungen)
     $pdo->exec("CREATE TABLE IF NOT EXISTS collections (
         id               VARCHAR(32)  PRIMARY KEY,
         name             VARCHAR(100) NOT NULL,
@@ -49,9 +78,8 @@ try {
         status           ENUM('draft','active','completed') NOT NULL DEFAULT 'draft',
         created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $steps[] = ['ok','Tabelle `collections` erstellt'];
+    step(true, 'Tabelle `collections`');
 
-    // Collection routes
     $pdo->exec("CREATE TABLE IF NOT EXISTS collection_routes (
         id              VARCHAR(32)  PRIMARY KEY,
         collection_id   VARCHAR(32)  NOT NULL,
@@ -64,11 +92,11 @@ try {
         progress        TINYINT UNSIGNED NOT NULL DEFAULT 0,
         visible         TINYINT(1)   NOT NULL DEFAULT 1,
         sort_order      INT          NOT NULL DEFAULT 0,
+        driven_segments LONGTEXT     DEFAULT NULL COMMENT 'JSON bool[] pro Segment',
         INDEX idx_collection (collection_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $steps[] = ['ok','Tabelle `collection_routes` erstellt'];
+    step(true, 'Tabelle `collection_routes` (inkl. driven_segments)');
 
-    // Vehicles
     $pdo->exec("CREATE TABLE IF NOT EXISTS vehicles (
         token                VARCHAR(64)  PRIMARY KEY,
         name                 VARCHAR(100) NOT NULL,
@@ -80,37 +108,104 @@ try {
         active_route_id      VARCHAR(32)  DEFAULT NULL,
         last_seen            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $steps[] = ['ok','Tabelle `vehicles` erstellt'];
+    step(true, 'Tabelle `vehicles`');
 
-    // Default admin user
-    $exists = db_val("SELECT COUNT(*) FROM users WHERE username='admin'");
-    if (!$exists) {
-        $hash = password_hash('admin123', PASSWORD_DEFAULT);
-        db_run("INSERT INTO users (username,password_hash,role) VALUES ('admin',?,'admin')", [$hash]);
-        $steps[] = ['ok','Standard-Admin erstellt: admin / admin123'];
-    } else {
-        $steps[] = ['info','Admin-User bereits vorhanden'];
+    // ── FEHLENDE SPALTEN NACHFÜHREN (Aktualisierung bestehender DB) ───────────
+    section('Spalten aktualisieren');
+
+    $cols = [
+        'collection_routes' => [
+            'driven_segments' => 'LONGTEXT DEFAULT NULL',
+        ],
+        'vehicles' => [
+            'user_id'              => 'INT DEFAULT NULL',
+            'active_collection_id' => 'VARCHAR(32) DEFAULT NULL',
+            'active_route_id'      => 'VARCHAR(32) DEFAULT NULL',
+        ],
+    ];
+
+    foreach ($cols as $table => $columns) {
+        foreach ($columns as $col => $def) {
+            $exists = $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='$table' AND COLUMN_NAME='$col'")->fetchColumn();
+            if (!$exists) {
+                $pdo->exec("ALTER TABLE `$table` ADD COLUMN `$col` $def");
+                step(true, "Spalte `$table.$col` hinzugefügt");
+            } else {
+                step(true, "Spalte `$table.$col` ✓ vorhanden");
+            }
+        }
     }
 
+    // vehicles.status Enum sicherstellen
+    try {
+        $pdo->exec("ALTER TABLE vehicles MODIFY COLUMN status ENUM('idle','driving','paused','offline') NOT NULL DEFAULT 'idle'");
+        step(true, 'vehicles.status Enum aktuell');
+    } catch(Exception $e) {
+        step(true, 'vehicles.status – OK');
+    }
+
+    // ── STANDARD-ADMIN ────────────────────────────────────────────────────────
+    section('Benutzer');
+
+    $adminExists = $pdo->query("SELECT COUNT(*) FROM users WHERE role='admin'")->fetchColumn();
+    if (!$adminExists) {
+        $hash = password_hash('admin123', PASSWORD_DEFAULT);
+        $pdo->prepare("INSERT IGNORE INTO users (username,password_hash,role) VALUES ('admin',?,'admin')")->execute([$hash]);
+        step(true, 'Standard-Admin erstellt: admin / admin123');
+        $newAdmin = true;
+    } else {
+        step(true, 'Admin-Benutzer vorhanden – kein Reset');
+    }
+
+    // ── BEISPIEL-VORLAGEN (nur bei Erstinstallation) ──────────────────────────
+    section('Beispieldaten');
+
+    $tplCount = $pdo->query("SELECT COUNT(*) FROM route_templates")->fetchColumn();
+    if (!$tplCount) {
+        $templates = [
+            ['name'=>'Route Nord','color'=>'#00d4ff','coords'=>[[47.3769,8.5417],[47.3850,8.5350],[47.3920,8.5280],[47.3980,8.5220],[47.4050,8.5180]]],
+            ['name'=>'Route Ost', 'color'=>'#ff6b35','coords'=>[[47.3769,8.5417],[47.3720,8.5500],[47.3680,8.5600],[47.3640,8.5700],[47.3600,8.5800]]],
+            ['name'=>'Route Süd', 'color'=>'#a8ff3e','coords'=>[[47.3769,8.5417],[47.3700,8.5400],[47.3640,8.5380],[47.3580,8.5350],[47.3460,8.5280]]],
+            ['name'=>'Route West','color'=>'#ff3e9d','coords'=>[[47.3769,8.5417],[47.3780,8.5300],[47.3790,8.5180],[47.3810,8.4950],[47.3820,8.4840]]],
+        ];
+        $stmt = $pdo->prepare("INSERT INTO route_templates (id,name,color,coordinates) VALUES (?,?,?,?)");
+        foreach ($templates as $t) {
+            $stmt->execute([bin2hex(random_bytes(8)),$t['name'],$t['color'],json_encode($t['coords'])]);
+        }
+        step(true, count($templates).' Beispiel-Routen-Vorlagen erstellt (Zürich)');
+    } else {
+        step(true, "Routen-Vorlagen vorhanden ($tplCount) – keine Beispieldaten eingefügt");
+    }
+
+    step(true, '─── Installation abgeschlossen ───');
+
 } catch (Exception $e) {
-    $steps[] = ['err','FEHLER: '.$e->getMessage()]; $ok = false;
+    step(false, 'Fehler: '.$e->getMessage());
 }
 ?>
-<pre><?php foreach($steps as [$t,$m]): ?>
-<span class="<?=$t?>"><?=$t==='ok'?'✅':($t==='err'?'❌':'ℹ️')?> <?=htmlspecialchars($m)?></span>
-<?php endforeach; ?></pre>
 
-<?php if($ok): ?>
+<h2>Protokoll</h2>
+<pre><?php foreach($steps as [$t,$m]):
+    if($t==='sec'): ?><span class="sec">── <?=htmlspecialchars($m)?> ──</span>
+<?php else: ?><span class="<?=$t?'ok':'err'?>"><?=$t?'✅':'❌'?> <?=htmlspecialchars($m)?></span>
+<?php endif; endforeach; ?></pre>
+
+<?php if(!$hasErr): ?>
+<?php if($newAdmin): ?>
 <div class="box">
-  <strong style="color:#ffd700">⚠️ Zugangsdaten für ersten Login:</strong><br><br>
+  <strong style="color:#ffd700">⚠️ Standard-Zugangsdaten:</strong><br><br>
   Benutzername: <strong style="color:#00d4ff">admin</strong><br>
   Passwort: <strong style="color:#00d4ff">admin123</strong><br><br>
-  <span style="color:#ff6b35">Bitte sofort nach dem Login im Admin-Panel ändern!</span>
+  <span style="color:#ff6b35">Bitte sofort nach dem Login das Passwort ändern!</span>
 </div>
-<p style="margin-top:16px;color:#a8ff3e">✅ Installation erfolgreich!</p>
-<p style="color:#ffd700;margin-top:8px">⚠️ Bitte <strong>install.php</strong> anschliessend löschen.</p>
+<?php endif; ?>
+<p style="color:#a8ff3e;margin-top:16px">✅ Erfolgreich!</p>
+<p style="color:#ffd700;margin-top:8px">
+  ⚠️ <strong>install.php nach der Installation löschen!</strong>
+</p>
 <a class="btn" href="login.php">→ Zum Login</a>
 <?php else: ?>
-<p style="color:#ff6b35;margin-top:16px">❌ Fehler – prüfe config.php</p>
+<p style="color:#ff6b35;margin-top:16px">❌ Fehler – DB-Zugangsdaten in dieser Datei prüfen.</p>
 <?php endif; ?>
 </body></html>

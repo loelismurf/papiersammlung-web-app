@@ -36,16 +36,15 @@ function error_response(string $msg, int $status = 400): void {
 function body(): array {
     return json_decode(file_get_contents('php://input'), true) ?? [];
 }
-function new_id(): string {
-    return bin2hex(random_bytes(8));
-}
+function new_id(): string { return bin2hex(random_bytes(8)); }
+
 function cleanup_vehicles(): void {
     db_run("UPDATE vehicles SET status='offline'
             WHERE last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND) AND status != 'offline'",
            [VEHICLE_TIMEOUT]);
 }
 
-// Haversine-Distanz in Metern
+// ── Haversine Distanz in Metern ───────────────────────────────────────────────
 function haversine(float $lat1, float $lng1, float $lat2, float $lng2): float {
     $R    = 6371000;
     $dLat = deg2rad($lat2 - $lat1);
@@ -54,15 +53,38 @@ function haversine(float $lat1, float $lng1, float $lat2, float $lng2): float {
     return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
 }
 
-// Fortschritt: 5m Toleranz, geht nur vorwärts
-function calculate_progress(float $lat, float $lng, array $coords, int $currentProgress = 0): int {
+// ── Segment-basiertes Tracking ────────────────────────────────────────────────
+// Jedes Segment (Strecke zwischen zwei Routenpunkten) wird einzeln getrackt.
+// Ein Segment gilt als abgefahren wenn das Fahrzeug innerhalb von 5m
+// eines der beiden Endpunkte war.
+// Gekreuzte Routen funktionieren korrekt: nur tatsächlich befahrene
+// Segmente werden als erledigt markiert.
+
+function update_driven_segments(float $lat, float $lng, array $coords, array $driven): array {
     $n = count($coords);
-    if ($n < 2) return 0;
-    $maxIndex = (int) round($currentProgress / 100 * ($n - 1));
-    foreach ($coords as $i => $p) {
-        if (haversine($lat, $lng, $p[0], $p[1]) <= 5.0) {
-            $maxIndex = max($maxIndex, $i);
+    for ($i = 0; $i < $n - 1; $i++) {
+        if ($driven[$i] ?? false) continue; // schon erledigt
+        // Segment i gilt als abgefahren wenn Fahrzeug ≤5m von Punkt i ODER Punkt i+1
+        if (haversine($lat, $lng, $coords[$i][0],   $coords[$i][1])   <= 5.0 ||
+            haversine($lat, $lng, $coords[$i+1][0], $coords[$i+1][1]) <= 5.0) {
+            $driven[$i] = true;
         }
     }
-    return (int) round($maxIndex / ($n - 1) * 100);
+    return $driven;
+}
+
+function progress_from_segments(array $driven): int {
+    if (empty($driven)) return 0;
+    $done = count(array_filter($driven, fn($v) => $v === true));
+    return (int) round($done / count($driven) * 100);
+}
+
+function all_segments_driven(array $driven): bool {
+    if (empty($driven)) return false;
+    return !in_array(false, $driven, true) && !in_array(null, $driven, true);
+}
+
+function init_segments(int $numCoords): array {
+    // N Koordinaten → N-1 Segmente, alle ungefahren
+    return array_fill(0, max(0, $numCoords - 1), false);
 }

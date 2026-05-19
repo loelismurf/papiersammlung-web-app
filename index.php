@@ -9,6 +9,8 @@ $username = me_name();
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -411,25 +413,52 @@ function renderRoutes(){
     if(routeLayers[route.id]) routeLayers[route.id].forEach(l=>map.removeLayer(l));
     if(!route.visible){routeLayers[route.id]=[];return;}
     const coords=route.coordinates, layers=[];
+    const driven=route.driven_segments||[];
+
     if(route.status==='pending'){
       layers.push(L.polyline(coords,{color:route.color,weight:3,opacity:0.55,dashArray:'6,5',lineCap:'round'}));
+
     } else if(route.status==='completed'){
       layers.push(L.polyline(coords,{color:'#a8ff3e',weight:4,opacity:0.9,lineCap:'round'}));
+
     } else if(route.status==='active'||route.status==='paused'){
-      const pi=Math.max(0,Math.floor((coords.length-1)*route.progress/100));
-      const done=coords.slice(0,pi+1), todo=coords.slice(pi);
-      if(done.length>1) layers.push(L.polyline(done,{color:'#a8ff3e',weight:5,opacity:1,lineCap:'round'}));
-      if(todo.length>1) layers.push(L.polyline(todo,{color:'#ff4444',weight:4,opacity:0.9,dashArray:route.status==='paused'?'8,5':null,lineCap:'round'}));
+      // Segment-genaue Anzeige: grün=abgefahren, rot=noch offen
+      // Aufeinanderfolgende gleiche Segmente werden zusammengefasst → effizient
+      const paused=route.status==='paused';
+      let i=0;
+      while(i < coords.length-1){
+        const isDriven=driven[i]===true;
+        const seg=[coords[i]];
+        let j=i;
+        while(j < coords.length-1 && (driven[j]===true)===isDriven){
+          seg.push(coords[j+1]); j++;
+        }
+        layers.push(L.polyline(seg,{
+          color:   isDriven?'#a8ff3e':'#ff4444',
+          weight:  isDriven?5:4,
+          opacity: isDriven?1.0:0.9,
+          dashArray:(!isDriven&&paused)?'8,5':null,
+          lineCap:'round'
+        }));
+        i=j;
+      }
     }
+
     const f=coords[0], la=coords[coords.length-1];
-    layers.push(L.circleMarker(f,{radius:7,fillColor:route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1}).bindTooltip('Start: '+route.name,{className:'rtt',direction:'right'}));
-    layers.push(L.circleMarker(la,{radius:7,fillColor:route.status==='completed'?'#a8ff3e':route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1}).bindTooltip('Ziel: '+route.name,{className:'rtt',direction:'right'}));
+    layers.push(L.circleMarker(f,{radius:7,fillColor:route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1})
+      .bindTooltip('Start: '+route.name,{className:'rtt',direction:'right'}));
+    layers.push(L.circleMarker(la,{radius:7,
+      fillColor:route.status==='completed'?'#a8ff3e':route.color,
+      color:'#fff',weight:2,fillOpacity:1,opacity:1})
+      .bindTooltip('Ziel: '+route.name,{className:'rtt',direction:'right'}));
     layers.forEach(l=>l.addTo(map));
-    if(layers[0]) layers[0].bindTooltip(`<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,{permanent:false,direction:'top',className:'rtt'});
+    if(layers[0]) layers[0].bindTooltip(
+      `<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,
+      {permanent:false,direction:'top',className:'rtt'}
+    );
     routeLayers[route.id]=layers;
   });
 }
-
 // ── Fahrzeug-Marker mit Strassen-Snap ────────────────────────────────────────
 function renderVehicleMarkers(){
   const ids=new Set(vehicles.map(v=>v.token));
