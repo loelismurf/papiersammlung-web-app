@@ -235,12 +235,8 @@ if ('serviceWorker' in navigator) {
 }
 
 function sendGPS(lat, lng) {
-  const payload = { token:myToken, lat, lng, collection_id:currentColId };
-  if (navigator.serviceWorker?.controller) {
-    navigator.serviceWorker.controller.postMessage({ type:'GPS_UPDATE', ...payload });
-  } else {
-    api('vehicle_position', payload);
-  }
+  // Immer direkt senden – SW hat keinen Zugriff auf Session-Cookie im Hintergrund
+  api('vehicle_position', { token:myToken, lat, lng, collection_id:currentColId });
 }
 
 // ── Map ───────────────────────────────────────────────────────────────────────
@@ -462,7 +458,9 @@ function renderVehicleMarkers(){
       html:`<div style="width:${sz}px;height:${sz}px;background:${col};border:2px solid ${self?'#fff':'rgba(255,255,255,.7)'};border-radius:50%;box-shadow:0 0 ${self?12:6}px ${col}"></div>`,
       iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
     if(vehicleMarkers[v.token]){
-      vehicleMarkers[v.token].setLatLng([dLat,dLng]); vehicleMarkers[v.token].setIcon(icon);
+      vehicleMarkers[v.token].setLatLng([dLat,dLng]);
+      vehicleMarkers[v.token].setIcon(icon);
+      vehicleMarkers[v.token].getTooltip()?.setContent(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`);
     } else {
       vehicleMarkers[v.token]=L.marker([dLat,dLng],{icon,zIndexOffset:self?1000:0}).addTo(map)
         .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`,{permanent:self,direction:'top',offset:[0,-(sz/2+4)],className:'rtt'});
