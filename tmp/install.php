@@ -22,11 +22,8 @@
 <h1>⚙ PAPIERSAMMLUNG</h1>
 <div class="sub">INSTALLATION / AKTUALISIERUNG · v4</div>
 <?php
-// ── DB-Zugangsdaten direkt hier eintragen ─────────────────────────────────────
-define('DB_HOST', 'localhost');           // ← anpassen
-define('DB_NAME', 'dein_datenbankname'); // ← anpassen
-define('DB_USER', 'dein_benutzer');      // ← anpassen
-define('DB_PASS', 'dein_passwort');      // ← anpassen
+// ── Zugangsdaten aus config.php lesen ────────────────────────────────────────
+require_once __DIR__ . '/../config.php';
 
 $steps = []; $hasErr = false; $newAdmin = false;
 
