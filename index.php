@@ -18,7 +18,6 @@ $username = me_name();
 <link rel="manifest" href="manifest.json">
 <title>Papiersammlung</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep.js/0.12.0/NoSleep.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -237,6 +236,12 @@ select:focus{border-color:var(--accent)}
           <button class="btn s" onclick="cancelRename()">✕</button>
         </div>
         <button id="btn-collect" class="off" onclick="toggleCollecting()">🔴 Nicht am Sammeln</button>
+        <!-- Push-Notification Status (nur sichtbar wenn relevant) -->
+        <div id="push-row" style="display:none;margin-top:5px;font-size:10px;font-family:var(--font-mono);color:var(--muted);align-items:center;gap:6px">
+          <span id="push-status-icon">🔔</span>
+          <span id="push-status-text">Hintergrund-Push inaktiv</span>
+          <button id="push-enable-btn" class="btn s" style="display:none;margin-left:auto" onclick="requestPushPermission()">Erlauben</button>
+        </div>
       </div>
     </div>
 
@@ -320,11 +325,9 @@ let isCollecting = false;
 let currentColId = null;
 let myLat = null, myLng = null, mySpeed = null, wakeLock = null;
 
-// iOS-Erkennung: alle Browser auf iOS nutzen WebKit → kein echter Hintergrund möglich.
-// Workaround: NoSleep.js verhindert Bildschirm-Dunkel, GPS läuft bei offener App weiter.
+// iOS-Erkennung: alle Browser auf iOS nutzen WebKit → kein Hintergrund-GPS möglich.
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
            || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const noSleep = (typeof NoSleep !== 'undefined') ? new NoSleep() : null;
 let routes = [], vehicles = [];
 const routeLayers = {}, vehicleMarkers = {}, vehicleMarkerProps = {};
 
@@ -442,42 +445,29 @@ function updateVehicleSnaps(){
 
 // ── Service Worker + Background GPS ──────────────────────────────────────────
 // ── Service Worker + Background-GPS ──────────────────────────────────────────
-// Unterstützte Browser (Android): Chrome, Samsung Internet, Ecosia, Edge, Brave,
-//   Opera, Firefox – alle Chromium/Gecko-Browser mit Service Worker + Notification.
-// Nicht unterstützt: iOS Safari, Ecosia iOS, Chrome iOS (WebKit-Einschränkung).
-//
-// Mechanismus (3 Schichten für maximale Kompatibilität):
-//   1. keepalive:true  – Fetch läuft nach Tab-Wechsel weiter (alle modernen Browser)
-//   2. Page-Timer      – setInterval läuft im Hintergrund auf Android (Fallback)
-//   3. SW-Notification – hält Browserprozess am Leben (verhindert Kill durch OS)
+// 3 Schichten: keepalive-fetch + Seiten-Timer + SW-Notification (wenn erlaubt)
+// Web Push (auch bei geschlossenem Browser): via VAPID, Trigger über state-Polling
 
 let swRegistration = null;
-let lastGpsSentAt  = 0;   // Timestamp letzter GPS-Sendung
-let bgPageTimer    = null; // Seiten-seitiger Backup-Timer
+let lastGpsSentAt  = 0;
+let bgPageTimer    = null;
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js')
-    .then(reg => { swRegistration = reg; })
+    .then(reg => {
+      swRegistration = reg;
+      // Push-Status anzeigen sobald SW bereit
+      updatePushStatus();
+    })
     .catch(() => {});
-  // SW fordert GPS-Update an (z.B. wenn watchPosition im BG nicht feuert)
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data?.type === 'REQUEST_GPS' && myLat !== null && isJoined) sendGPS(myLat, myLng);
   });
 }
 
-async function requestNotificationPerm() {
-  if (!('Notification' in window)) return false;
-  if (Notification.permission === 'granted') return true;
-  if (Notification.permission === 'denied') return false;
-  return (await Notification.requestPermission()) === 'granted';
-}
+function getSwActive() { return swRegistration?.active ?? null; }
 
-function getSwActive() {
-  return swRegistration?.active ?? null;
-}
-
-// Hintergrund-Timer (Schicht 2): läuft auf Android auch im Hintergrund.
-// Feuert nur wenn watchPosition seit >8s nichts geliefert hat.
+// Seiten-Timer: Fallback wenn watchPosition im HG aufhört zu feuern
 function startBgPageTimer() {
   if (bgPageTimer) return;
   bgPageTimer = setInterval(() => {
@@ -492,18 +482,78 @@ function stopBgPageTimer() {
 
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'hidden' && isJoined && isCollecting) {
-    // Schicht 2: Seiten-Timer starten
     startBgPageTimer();
-    // Schicht 3: SW-Notification anzeigen (hält Prozess am Leben)
-    const sw = getSwActive();
-    if (sw) sw.postMessage({ type: 'BG_START' });
+    // SW-Notification nur wenn Berechtigung bereits vorhanden (nie selbst anfragen!)
+    if (Notification?.permission === 'granted') {
+      getSwActive()?.postMessage({ type: 'BG_START' });
+    }
   } else if (document.visibilityState === 'visible') {
     stopBgPageTimer();
-    const sw = getSwActive();
-    if (sw) sw.postMessage({ type: 'BG_STOP' });
+    getSwActive()?.postMessage({ type: 'BG_STOP' });
     if (isJoined && !wakeLock) await requestWakeLock();
   }
 });
+
+// ── Push-Notification Berechtigung & Subscription ────────────────────────────
+// WICHTIG: Notification.requestPermission() NUR nach explizitem User-Tap aufrufen!
+// Automatischer Aufruf → Browser-Fehlerdialog (besonders auf Samsung Internet).
+
+function updatePushStatus() {
+  const row  = document.getElementById('push-row');
+  const icon = document.getElementById('push-status-icon');
+  const text = document.getElementById('push-status-text');
+  const btn  = document.getElementById('push-enable-btn');
+  if (!('Notification' in window) || !('PushManager' in window)) return;
+  row.style.display = 'flex';
+  const perm = Notification.permission;
+  if (perm === 'granted') {
+    icon.textContent = '🔔'; text.textContent = 'Push: Aktiv'; text.style.color = 'var(--green)';
+    btn.style.display = 'none';
+    subscribeToPush();
+  } else if (perm === 'denied') {
+    icon.textContent = '🔕'; text.textContent = 'Push gesperrt (Browser-Einstellungen)'; text.style.color = 'var(--muted)';
+    btn.style.display = 'none';
+  } else {
+    icon.textContent = '🔔'; text.textContent = 'Push inaktiv –'; text.style.color = 'var(--muted)';
+    btn.style.display = 'inline-block';
+  }
+}
+
+async function requestPushPermission() {
+  // Einzige Stelle wo requestPermission() aufgerufen wird – direkt vom Button-Tap
+  if (!('Notification' in window)) return;
+  try {
+    const perm = await Notification.requestPermission();
+    updatePushStatus();
+    if (perm === 'granted') {
+      notify('🔔 Push-Benachrichtigungen aktiviert – Hintergrund-GPS aktiv','g');
+      subscribeToPush();
+    } else if (perm === 'denied') {
+      notify('Push-Benachrichtigungen gesperrt. Bitte in Browser-Einstellungen freigeben.','w');
+    }
+  } catch(e) {}
+}
+
+async function subscribeToPush() {
+  if (!swRegistration || Notification?.permission !== 'granted') return;
+  try {
+    const vapidRes = await apiGet('get_vapid_key');
+    if (!vapidRes?.key) return; // VAPID-Keys noch nicht generiert
+    const applicationServerKey = urlB64ToUint8Array(vapidRes.key);
+    let sub = await swRegistration.pushManager.getSubscription();
+    if (!sub) {
+      sub = await swRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+    }
+    const j = sub.toJSON();
+    await api('push_subscribe', { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
+  } catch(e) {}
+}
+
+function urlB64ToUint8Array(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
 
 function sendGPS(lat, lng) {
   lastGpsSentAt = Date.now();
@@ -558,17 +608,13 @@ async function requestWakeLock(){
   _updateBanner();
 }
 function _updateBanner(){
-  const active = wakeLock || (noSleep?.isEnabled);
-  if(!active){ _hideBanner(); return; }
-  document.getElementById('wake-banner').textContent = isIOS && noSleep?.isEnabled
-    ? '📱 iOS: App offen lassen – GPS läuft, Bildschirm aktiv'
-    : '📍 GPS aktiv – Bildschirm bleibt an';
+  if(!wakeLock){ _hideBanner(); return; }
+  document.getElementById('wake-banner').textContent = '📍 GPS aktiv – Bildschirm bleibt an';
   document.getElementById('wake-banner').style.display='flex';
 }
 function _hideBanner(){ document.getElementById('wake-banner').style.display='none'; }
 async function releaseWakeLock(){
   if(wakeLock){ try{ await wakeLock.release(); }catch(e){} wakeLock=null; }
-  if(noSleep?.isEnabled) noSleep.disable();
   _hideBanner();
 }
 
@@ -647,18 +693,13 @@ async function toggleCollecting(){
   isCollecting=r.collecting; setMyStatus(r.status||'idle'); updateCollectingUI();
   if(isCollecting){
     notify('🟢 Sammelmodus aktiviert – GPS wird aufgezeichnet','g');
-    if(isIOS) notify('📱 iOS: App bitte geöffnet lassen. Hintergrund-GPS nicht möglich.','w');
-    await requestNotificationPerm();
+    if(isIOS) notify('📱 iOS: App offen lassen – Hintergrund-GPS nicht möglich.','w');
     await requestWakeLock();
-    // NoSleep HIER aktivieren: direkt im Tap-Handler = User-Geste vorhanden
-    // (Video-Autoplay braucht zwingend eine User-Geste, sonst blockt der Browser)
-    if(noSleep && !noSleep.isEnabled){
-      try{ await noSleep.enable(); _updateBanner(); }catch(e){}
-    }
+    updatePushStatus(); // Push-Status aktualisieren
   } else {
     notify('🔴 Sammelmodus deaktiviert','w');
     stopBgPageTimer();
-    const sw = getSwActive(); if(sw) sw.postMessage({type:'BG_STOP'});
+    getSwActive()?.postMessage({type:'BG_STOP'});
     await releaseWakeLock();
   }
 }

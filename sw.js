@@ -1,97 +1,113 @@
-// Service Worker – Papiersammlung v4
-// Hintergrund-GPS via persistente Notification (Android Chrome PWA)
-// iOS Safari: kein Hintergrund-Support möglich (Platform-Einschränkung)
+// Service Worker – Papiersammlung v5
+// Background-GPS + Web Push (auch bei geschlossenem Browser)
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(clients.claim()));
 
-// ── Hintergrund-Timer ─────────────────────────────────────────────────────────
-// Wenn die App in den Hintergrund geht, tickt dieser Timer und fordert
-// den Hauptthread per Nachricht auf, seinen letzten GPS-Stand zu senden.
-let bgTimer = null;
-let lastGpsData = null; // Letzter bekannter GPS-Stand (im SW gecacht)
-
-function startBgTimer() {
-    if (bgTimer) return;
-    bgTimer = setInterval(async () => {
-        const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
-        if (clients.length > 0) {
-            // Hauptthread noch aktiv → GPS anfordern
-            clients.forEach(c => c.postMessage({ type: 'REQUEST_GPS' }));
-        } else if (lastGpsData) {
-            // Kein Hauptthread mehr → letzten bekannten Stand direkt senden
-            sendGpsToApi(lastGpsData);
-        }
-    }, 5000);
-}
-
-function stopBgTimer() {
-    if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
-}
+// ── GPS-Cache (letzter bekannter Stand) ───────────────────────────────────────
+let lastGpsData = null;
+let bgTimer     = null;
 
 function sendGpsToApi(data) {
-    const { token, lat, lng, collection_id, snap_lat, snap_lng } = data;
-    const body = { token, lat, lng, collection_id };
+    if (!data?.token || !data?.lat) return;
+    const { token, lat, lng, collection_id, snap_lat, snap_lng, speed } = data;
+    const body = { token, lat, lng, collection_id, speed };
     if (snap_lat != null) { body.snap_lat = snap_lat; body.snap_lng = snap_lng; }
     fetch('api.php?action=vehicle_position', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        keepalive: true
+        keepalive: true,
     }).catch(() => {});
 }
 
-// ── SW Message Handler ────────────────────────────────────────────────────────
 self.addEventListener('message', event => {
-    const { type } = event.data ?? {};
+    const type = event.data?.type;
 
     if (type === 'GPS_UPDATE') {
-        // Direkter GPS-Send aus dem Hauptthread (immer bevorzugt)
         lastGpsData = event.data;
         sendGpsToApi(event.data);
     }
 
     if (type === 'BG_START') {
-        // App geht in Hintergrund – Timer starten + Notification anzeigen
-        startBgTimer();
+        if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
+        bgTimer = setInterval(async () => {
+            const cls = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+            if (cls.length > 0) {
+                cls.forEach(c => c.postMessage({ type: 'REQUEST_GPS' }));
+            } else if (lastGpsData) {
+                sendGpsToApi(lastGpsData);
+            }
+        }, 5000);
+
+        // Notification nur wenn Berechtigung da – kein Fehler wenn nicht
         self.registration.showNotification('Papiersammlung – GPS aktiv', {
-            body: '📍 Fahrzeug wird im Hintergrund getrackt. Antippen zum Öffnen.',
+            body: '📍 GPS-Tracking läuft im Hintergrund. Antippen zum Öffnen.',
             icon: '/favicon.png',
             badge: '/favicon.png',
             tag: 'gps-bg',
-            requireInteraction: true, // bleibt bis zur Interaktion sichtbar
+            requireInteraction: true,
             silent: true,
             vibrate: [],
-        });
+        }).catch(() => {});
     }
 
     if (type === 'BG_STOP') {
-        // App wieder im Vordergrund
-        stopBgTimer();
+        if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
         self.registration.getNotifications({ tag: 'gps-bg' })
-            .then(ns => ns.forEach(n => n.close()));
+            .then(ns => ns.forEach(n => n.close())).catch(() => {});
     }
 });
 
-// ── Notification Click → App in Vordergrund bringen ──────────────────────────
+// ── Web Push: Weckt User wenn GPS pausiert (auch bei geschlossenem Browser) ───
+self.addEventListener('push', event => {
+    event.waitUntil(
+        self.registration.showNotification('Papiersammlung – GPS pausiert', {
+            body: '📍 GPS-Tracking unterbrochen. Antippen zum Fortsetzen.',
+            icon: '/favicon.png',
+            badge: '/favicon.png',
+            tag: 'gps-pause',
+            requireInteraction: true,
+            vibrate: [200, 100, 200],
+            data: { url: '/index.php' },
+        })
+    );
+    if (lastGpsData) sendGpsToApi(lastGpsData);
+});
+
 self.addEventListener('notificationclick', event => {
     event.notification.close();
+    const url = event.notification.data?.url || '/index.php';
     event.waitUntil(
         self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-            .then(clients => {
-                if (clients.length > 0) { clients[0].focus(); return; }
-                return self.clients.openWindow('/index.php');
+            .then(cls => {
+                const ex = cls.find(c => c.url.includes('index.php'));
+                if (ex) { ex.focus(); return; }
+                return self.clients.openWindow(url);
             })
     );
 });
 
-// ── Periodic Sync (Android Chrome PWA, falls vom Browser gewährt) ─────────────
-// Minimales Intervall ist 12h – nur als Fallback, nicht für Live-Tracking.
+self.addEventListener('pushsubscriptionchange', event => {
+    event.waitUntil(
+        self.registration.pushManager.subscribe(event.oldSubscription.options)
+            .then(sub => {
+                const j = sub.toJSON();
+                return fetch('api.php?action=push_subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }),
+                    keepalive: true,
+                });
+            }).catch(() => {})
+    );
+});
+
 self.addEventListener('periodicsync', event => {
     if (event.tag === 'gps-keepalive') {
         event.waitUntil(
             self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
-                .then(clients => clients.forEach(c => c.postMessage({ type: 'REQUEST_GPS' })))
+                .then(cls => cls.forEach(c => c.postMessage({ type: 'REQUEST_GPS' })))
         );
     }
 });

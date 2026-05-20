@@ -170,6 +170,26 @@ try {
         step(true,count($templates).' Beispiel-Vorlagen erstellt (Zürich)');
     } else step(true,"Vorlagen vorhanden ($tplCount) – übersprungen");
 
+    // v5: Settings-Tabelle (VAPID-Keys etc.)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
+        key_name VARCHAR(100) PRIMARY KEY,
+        value    TEXT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    step(true, 'Tabelle `settings` (VAPID-Schlüssel, App-Konfiguration)');
+
+    // v5: Push-Subscriptions
+    $pdo->exec("CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        user_id    INT NOT NULL,
+        endpoint   TEXT NOT NULL,
+        p256dh     TEXT NOT NULL,
+        auth_key   VARCHAR(128) NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_auth (user_id, auth_key(64)),
+        INDEX idx_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    step(true, 'Tabelle `push_subscriptions` (Web Push) ← NEU v5');
+
     step(true,'─── Installation v5 abgeschlossen ───');
 } catch (Exception $e) { step(false,'Fehler: '.$e->getMessage()); }
 ?>

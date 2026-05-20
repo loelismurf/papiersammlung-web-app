@@ -36,6 +36,12 @@ try {
             $v['lng']        = $v['lng'] !== null ? (float)$v['lng'] : null;
             $v['collecting'] = (bool)($v['collecting'] ?? false);
         }
+        // Web Push: offline gegangene Sammel-Fahrzeuge benachrichtigen
+        // (Piggyback auf Polling – kein Cron-Job nötig)
+        try {
+            require_once __DIR__ . '/push.php';
+            notify_offline_collectors($cid);
+        } catch (Exception $e) {}
         json_response(['routes'=>$routes,'vehicles'=>$vehicles]);
 
     case 'collections_active':
@@ -324,6 +330,36 @@ try {
         if (!$admin) error_response('Kein Zugriff', 403);
         $rid=$data['route_id']??''; if (!$rid) error_response('route_id fehlt');
         db_run("UPDATE collection_routes SET visible=NOT visible WHERE id=?",[$rid]);
+        json_response(['ok'=>true]);
+
+    // ── Web Push Subscription ──────────────────────────────────────────────────
+    case 'get_vapid_key':
+        // Liefert den öffentlichen VAPID-Schlüssel für die Push-Subscription im Client
+        try {
+            require_once __DIR__ . '/push.php';
+            $vapid = get_vapid_keys();
+            if (!$vapid) json_response(['key'=>null,'available'=>false]);
+            json_response(['key'=>$vapid['public'],'available'=>true]);
+        } catch (Exception $e) { json_response(['key'=>null,'available'=>false]); }
+
+    case 'push_subscribe':
+        // Push-Subscription (endpoint + keys) des Clients speichern
+        $endpoint = trim($data['endpoint'] ?? '');
+        $p256dh   = trim($data['p256dh']   ?? '');
+        $auth     = trim($data['auth']      ?? '');
+        if (!$endpoint || !$p256dh || !$auth) error_response('Felder fehlen');
+        try {
+            db_run("INSERT INTO push_subscriptions (user_id,endpoint,p256dh,auth_key)
+                    VALUES (?,?,?,?)
+                    ON DUPLICATE KEY UPDATE endpoint=VALUES(endpoint),p256dh=VALUES(p256dh)",
+                   [$user_id, $endpoint, $p256dh, $auth]);
+        } catch (Exception $e) {
+            // Tabelle existiert noch nicht → ignorieren
+        }
+        json_response(['ok'=>true]);
+
+    case 'push_unsubscribe':
+        db_run("DELETE FROM push_subscriptions WHERE user_id=?", [$user_id]);
         json_response(['ok'=>true]);
 
     default:
