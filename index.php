@@ -434,53 +434,93 @@ function updateVehicleSnaps(){
 }
 
 // ── Service Worker + Background GPS ──────────────────────────────────────────
+// ── Service Worker + Background-GPS ──────────────────────────────────────────
+// Unterstützte Browser (Android): Chrome, Samsung Internet, Ecosia, Edge, Brave,
+//   Opera, Firefox – alle Chromium/Gecko-Browser mit Service Worker + Notification.
+// Nicht unterstützt: iOS Safari, Ecosia iOS, Chrome iOS (WebKit-Einschränkung).
+//
+// Mechanismus (3 Schichten für maximale Kompatibilität):
+//   1. keepalive:true  – Fetch läuft nach Tab-Wechsel weiter (alle modernen Browser)
+//   2. Page-Timer      – setInterval läuft im Hintergrund auf Android (Fallback)
+//   3. SW-Notification – hält Browserprozess am Leben (verhindert Kill durch OS)
+
 let swRegistration = null;
+let lastGpsSentAt  = 0;   // Timestamp letzter GPS-Sendung
+let bgPageTimer    = null; // Seiten-seitiger Backup-Timer
+
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js')
     .then(reg => { swRegistration = reg; })
     .catch(() => {});
+  // SW fordert GPS-Update an (z.B. wenn watchPosition im BG nicht feuert)
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data?.type === 'REQUEST_GPS' && myLat !== null && isJoined) sendGPS(myLat, myLng);
   });
 }
 
-// Notification-Berechtigung anfordern
 async function requestNotificationPerm() {
   if (!('Notification' in window)) return false;
   if (Notification.permission === 'granted') return true;
   if (Notification.permission === 'denied') return false;
-  const p = await Notification.requestPermission();
-  return p === 'granted';
+  return (await Notification.requestPermission()) === 'granted';
 }
 
-// App in Hintergrund → SW aktivieren für Background-GPS
+function getSwActive() {
+  return swRegistration?.active ?? null;
+}
+
+// Hintergrund-Timer (Schicht 2): läuft auf Android auch im Hintergrund.
+// Feuert nur wenn watchPosition seit >8s nichts geliefert hat.
+function startBgPageTimer() {
+  if (bgPageTimer) return;
+  bgPageTimer = setInterval(() => {
+    if (myLat !== null && isJoined && isCollecting && Date.now() - lastGpsSentAt > 8000) {
+      sendGPS(myLat, myLng);
+    }
+  }, 6000);
+}
+function stopBgPageTimer() {
+  if (bgPageTimer) { clearInterval(bgPageTimer); bgPageTimer = null; }
+}
+
 document.addEventListener('visibilitychange', async () => {
-  const sw = swRegistration?.active || (await navigator.serviceWorker?.ready)?.active;
-  if (!sw) return;
   if (document.visibilityState === 'hidden' && isJoined && isCollecting) {
-    sw.postMessage({ type: 'BG_START' });
+    // Schicht 2: Seiten-Timer starten
+    startBgPageTimer();
+    // Schicht 3: SW-Notification anzeigen (hält Prozess am Leben)
+    const sw = getSwActive();
+    if (sw) sw.postMessage({ type: 'BG_START' });
   } else if (document.visibilityState === 'visible') {
-    sw.postMessage({ type: 'BG_STOP' });
+    stopBgPageTimer();
+    const sw = getSwActive();
+    if (sw) sw.postMessage({ type: 'BG_STOP' });
     if (isJoined && !wakeLock) await requestWakeLock();
   }
 });
 
 function sendGPS(lat, lng) {
+  lastGpsSentAt = Date.now();
   const payload = { token:myToken, lat, lng, collection_id:currentColId, speed:mySpeed };
   const c = vehicleSnap[myToken];
   if (c && Math.abs(c.srcLat-lat)<0.002 && Math.abs(c.srcLng-lng)<0.002) {
     payload.snap_lat = c.lat; payload.snap_lng = c.lng;
   }
-  // Im Vordergrund: direkt ans API
-  // Im Hintergrund: der SW sendet es via BG_START/REQUEST_GPS Loop
-  if (document.visibilityState !== 'hidden') {
-    api('vehicle_position', payload).catch(() => {});
-  } else {
-    // SW den letzten bekannten Stand mitteilen, damit er ihn im BG senden kann
-    const sw = swRegistration?.active;
-    if (sw) sw.postMessage({ type: 'GPS_UPDATE', ...payload });
-  }
-  // OSRM-Snap aktualisieren
+
+  // Schicht 1: keepalive:true – funktioniert auch im Hintergrund in ALLEN modernen
+  // Chromium-Browsern (Chrome, Samsung Internet, Ecosia, Edge, Brave, Opera)
+  // und Firefox. Der Request wird auch nach Tab-Wechsel noch abgeschlossen.
+  fetch(`${API}?action=vehicle_position`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true
+  }).catch(() => {});
+
+  // Schicht 3: SW über letzten GPS-Stand informieren (Fallback wenn oben fehlschlägt)
+  const sw = getSwActive();
+  if (sw) sw.postMessage({ type: 'GPS_UPDATE', ...payload });
+
+  // OSRM-Snap im Hintergrund aktualisieren
   if (!c || Math.abs(c.srcLat-lat)>0.0001 || Math.abs(c.srcLng-lng)>0.0001) {
     fetch(`${OSRM}/nearest/v1/driving/${lng},${lat}?number=1`)
       .then(r=>r.json()).then(d=>{
@@ -585,6 +625,8 @@ async function toggleCollecting(){
     await requestWakeLock();
   } else {
     notify('🔴 Sammelmodus deaktiviert','w');
+    stopBgPageTimer();
+    const sw = getSwActive(); if(sw) sw.postMessage({type:'BG_STOP'});
     await releaseWakeLock();
   }
 }
@@ -733,8 +775,17 @@ function renderVehicleMarkers(){
     if(vehicleMarkers[v.token]){
       const prev=vehicleMarkerProps[v.token];
       if(!prev||prev.key!==propKey){vehicleMarkers[v.token].setIcon(makeVehicleIcon(col,sz,self,spd));vehicleMarkerProps[v.token]={key:propKey};requestAnimationFrame(()=>{const el=vehicleMarkers[v.token]?.getElement();if(el)el.classList.add('animated');});}
-      const el=vehicleMarkers[v.token].getElement();if(el&&!el.classList.contains('animated'))el.classList.add('animated');
-      vehicleMarkers[v.token].setLatLng([dLat,dLng]);
+      // Bei Positionssprung >100m: keine Animation (teleportieren statt gleiten)
+      const oldPos=vehicleMarkers[v.token].getLatLng();
+      const el=vehicleMarkers[v.token].getElement();
+      if(distM(oldPos.lat,oldPos.lng,dLat,dLng)>100){
+        if(el)el.classList.remove('animated');
+        vehicleMarkers[v.token].setLatLng([dLat,dLng]);
+        requestAnimationFrame(()=>{const e2=vehicleMarkers[v.token]?.getElement();if(e2)e2.classList.add('animated');});
+      } else {
+        if(el&&!el.classList.contains('animated'))el.classList.add('animated');
+        vehicleMarkers[v.token].setLatLng([dLat,dLng]);
+      }
       vehicleMarkers[v.token].getTooltip()?.setContent(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}${collecting?' 🟢':' ○'}${spd!=null?' · '+spd.toFixed(0)+'km/h':''}`);
     } else {
       const marker=L.marker([dLat,dLng],{icon:makeVehicleIcon(col,sz,self,spd),zIndexOffset:self?1000:0}).addTo(map)
@@ -794,7 +845,8 @@ function renderVehicleList(){
 
 function updateStats(){document.getElementById('sv').textContent=vehicles.length;document.getElementById('sa').textContent=routes.filter(r=>r.status==='active').length;document.getElementById('sd').textContent=routes.filter(r=>r.status==='completed').length;}
 function slabel(s){return{pending:'Ausstehend',active:'Aktiv',completed:'Erledigt',paused:'Pausiert',idle:'Inaktiv',driving:'Fährt',offline:'Offline',draft:'Entwurf'}[s]||s;}
-function notify(msg,type=''){const el=document.createElement('div');el.className='notif '+(type||'');el.textContent=msg;document.getElementById('notifs').appendChild(el);setTimeout(()=>el.remove(),3500);}
+function distM(lat1,lng1,lat2,lng2){const R=6371000,dL=(lat2-lat1)*Math.PI/180,dl=(lng2-lng1)*Math.PI/180,a=Math.sin(dL/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
+function notify(msg,type=''){const el=document.createElement('div');el.className='notif '+(type||'');el.textContent=msg;document.getElementById('notifs').appendChild(el);setTimeout(()=>el.remove(),7000);}
 
 loadCollections();
 </script>
