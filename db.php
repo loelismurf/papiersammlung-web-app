@@ -26,11 +26,12 @@ function cleanup_vehicles(): void {
     db_run("UPDATE vehicles SET status='offline'
             WHERE last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND) AND status!='offline'",
            [VEHICLE_TIMEOUT]);
+    // Self-Healing: Schema sicherstellen
+    ensure_driven_segments_column();
+    ensure_collecting_column();
 }
 
-// ── Sicherstellen dass driven_segments Spalte existiert (Self-Healing) ──────
-// Noetig wenn DB mit alter install.php erstellt wurde bevor Spalte da war.
-// Wird nur einmal pro PHP-Prozess ausgefuehrt.
+// ── Self-Healing: driven_segments Spalte ────────────────────────────────────
 function ensure_driven_segments_column(): void {
     static $checked = false;
     if ($checked) return;
@@ -47,9 +48,28 @@ function ensure_driven_segments_column(): void {
                     ADD COLUMN driven_segments LONGTEXT DEFAULT NULL
                     COMMENT 'JSON bool[] pro Segment'");
         }
-    } catch (Exception $e) {
-        // Nicht kritisch, Fehler erscheint spaeter beim UPDATE
-    }
+    } catch (Exception $e) {}
+}
+
+// ── Self-Healing: collecting Spalte ─────────────────────────────────────────
+// Neue Spalte für Sammelmodus: nur wenn collecting=1 werden Segmente getrackt.
+function ensure_collecting_column(): void {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+    try {
+        $exists = db_val(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+             AND TABLE_NAME    = 'vehicles'
+             AND COLUMN_NAME   = 'collecting'"
+        );
+        if (!$exists) {
+            db_run("ALTER TABLE vehicles
+                    ADD COLUMN collecting TINYINT(1) NOT NULL DEFAULT 0
+                    COMMENT '1 = Sammelmodus aktiv, Segmente werden getrackt'");
+        }
+    } catch (Exception $e) {}
 }
 
 // ── Haversine Distanz in Metern ──────────────────────────────────────────────
@@ -61,7 +81,6 @@ function haversine(float $lat1, float $lng1, float $lat2, float $lng2): float {
 }
 
 // ── Senkrechtabstand Punkt -> Liniensegment (Meter) ─────────────────────────
-// Koordinaten als [lat, lng] Paare. deg2rad() ist zwingend noetig.
 function distToSegment(float $lat, float $lng, array $a, array $b): float {
     $cosLat = cos(deg2rad(($a[0]+$b[0]+$lat)/3));
     $R = 6371000;
@@ -80,12 +99,6 @@ function distToSegment(float $lat, float $lng, array $a, array $b): float {
 // Findet das naechstgelegene Segment auf der Route zum gegebenen GPS-Punkt.
 // Gibt zurueck: ['seg'=>Index, 't'=>0..1, 'dist'=>Meter] oder null wenn zu weit.
 //
-// Das ist der Kern der korrekten Segment-Erkennung:
-// Statt gerader Interpolation zwischen GPS-Punkten (die bei Kurven daneben liegt)
-// projizieren wir jeden GPS-Punkt auf die gespeicherte Routen-Geometrie.
-// Die Route selbst beschreibt die Strassenkurven - die Projektion folgt damit
-// automatisch der Strasse ohne externe API-Aufrufe.
-//
 function project_onto_route(float $lat, float $lng, array $coords, float $maxDist = 50.0): ?array {
     $n = count($coords);
     $bestDist = PHP_FLOAT_MAX;
@@ -93,7 +106,6 @@ function project_onto_route(float $lat, float $lng, array $coords, float $maxDis
     $bestT    = 0.0;
 
     for ($i = 0; $i < $n - 1; $i++) {
-        // Lokale Flachprojektion mit cosLat-Korrekturfaktor
         $cosLat = cos(deg2rad(($coords[$i][0] + $coords[$i+1][0] + $lat) / 3));
         $R = 6371000;
         $ax = deg2rad($coords[$i][1])   * $cosLat * $R;
@@ -129,31 +141,58 @@ function project_onto_route(float $lat, float $lng, array $coords, float $maxDis
     return ['seg' => $bestSeg, 't' => $bestT, 'dist' => round($bestDist, 1)];
 }
 
+// ── Kleine Lücken auf geraden Abschnitten schliessen ─────────────────────────
+//
+// Optimierung: Wenn ≤ $maxGap aufeinanderfolgende Segmente NICHT als abgefahren
+// markiert sind, aber auf BEIDEN Seiten abgefahrene Segmente angrenzen,
+// werden sie als abgefahren gerechnet.
+//
+// Begründung: Auf geraden Strecken kann GPS kurz verloren gehen oder leicht
+// neben der Route liegen. Das Fahrzeug ist aber eindeutig durchgefahren,
+// wenn es Segmente vor UND nach dem fehlenden Block markiert hat.
+//
+// $maxGap: Maximale Anzahl fehlender Segmente die gefüllt werden (Standard: 4)
+//          Bei 20m Segmentlänge = max. 80m Lücke → praxistauglich.
+//
+function fill_small_gaps(array $driven, int $maxGap = 4): array {
+    $n = count($driven);
+    if ($n < 3) return $driven;
+
+    $i = 0;
+    while ($i < $n) {
+        // Überspringe bereits abgefahrene Segmente
+        if ($driven[$i] === true) { $i++; continue; }
+
+        // Beginn einer nicht-abgefahrenen Strecke
+        $runStart = $i;
+        while ($i < $n && $driven[$i] !== true) $i++;
+        $runLen = $i - $runStart;
+
+        // Prüfe ob Lücke von true-Segmenten eingeschlossen ist
+        $leftTrue  = ($runStart > 0 && $driven[$runStart - 1] === true);
+        $rightTrue = ($i < $n   && $driven[$i]             === true);
+
+        if ($leftTrue && $rightTrue && $runLen <= $maxGap) {
+            for ($k = $runStart; $k < $i; $k++) {
+                $driven[$k] = true;
+            }
+        }
+    }
+    return $driven;
+}
+
 // ── Segment-Erkennung via Routen-Projektion ──────────────────────────────────
 //
-// KORREKTE METHODE - loest das Kurven-Problem der alten linearen Interpolation:
-//
-//   Altes Verfahren (FALSCH bei Kurven):
-//     Gerade zwischen GPS-A und GPS-B interpolieren -> bei 90°-Kurven 20-40m daneben
-//
-//   Neues Verfahren (KORREKT):
-//     1. GPS-Vorheriger Punkt -> auf Route projizieren -> Segment A
-//     2. GPS-Aktueller Punkt  -> auf Route projizieren -> Segment B
-//     3. Alle Segmente A..B als abgefahren markieren
-//
-//   Die Route selbst ist mit OSRM berechnet und folgt der Strasse.
-//   Die Projektion nutzt diese Geometrie -> korrekte Kurven-Erkennung.
-//
-// $tolerance: max. Abstand GPS -> Route in Metern
-//   30m Standard (GPS-Fehler ~15m + Strassenbreite ~5m + Puffer)
-//   20m mit OSRM-Snap (genauere Position)
+// Projiziert Vorgänger- und aktuellen GPS-Punkt auf die Route,
+// markiert alle Segmente dazwischen als abgefahren.
+// Danach: kleine Lücken auf geraden Abschnitten schliessen (fill_small_gaps).
 //
 function update_driven_segments(
     float $fromLat, float $fromLng,
     float $toLat,   float $toLng,
     array $coords,  array $driven,
     float $tolerance = 30.0,
-    int   $steps = 8  // Kompatibilitaetsparameter, nicht mehr fuer Interpolation genutzt
+    int   $steps = 8  // Kompatibilitaetsparameter
 ): array {
     $n = count($coords);
     if ($n < 2) return $driven;
@@ -161,8 +200,8 @@ function update_driven_segments(
     // Aktuellen GPS-Punkt auf Route projizieren
     $curProj = project_onto_route($toLat, $toLng, $coords, $tolerance);
     if ($curProj === null) {
-        // Fahrzeug nicht auf Route -> nichts markieren
-        return $driven;
+        // Fahrzeug nicht auf Route -> Lücken trotzdem schliessen
+        return fill_small_gaps($driven);
     }
 
     $segTo = $curProj['seg'];
@@ -175,14 +214,13 @@ function update_driven_segments(
         $lo = min($segFrom, $segTo);
         $hi = max($segFrom, $segTo);
 
-        // Plausibilitaets-Check: max. 50 Segmente auf einmal (~1km bei 20m Segmenten)
-        // Schutzt vor GPS-Spruengen / Teleportation
+        // Plausibilitaets-Check: max. 50 Segmente auf einmal
         if ($hi - $lo <= 50) {
             for ($i = $lo; $i <= $hi; $i++) {
                 $driven[$i] = true;
             }
         } else {
-            // GPS-Sprung erkannt: nur nahe Segmente beim aktuellen Punkt markieren
+            // GPS-Sprung: nur nahe Segmente beim aktuellen Punkt markieren
             $window = 3;
             for ($i = max(0, $segTo - $window); $i <= min($n-2, $segTo + $window); $i++) {
                 $driven[$i] = true;
@@ -193,7 +231,8 @@ function update_driven_segments(
         $driven[$segTo] = true;
     }
 
-    return $driven;
+    // Kleine Lücken auf geraden Abschnitten füllen
+    return fill_small_gaps($driven);
 }
 
 function progress_from_segments(array $driven): int {

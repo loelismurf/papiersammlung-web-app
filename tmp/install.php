@@ -20,7 +20,7 @@
 </head>
 <body>
 <h1>⚙ PAPIERSAMMLUNG</h1>
-<div class="sub">INSTALLATION / AKTUALISIERUNG · v3</div>
+<div class="sub">INSTALLATION / AKTUALISIERUNG · v4</div>
 <?php
 // ── DB-Zugangsdaten direkt hier eintragen ─────────────────────────────────────
 define('DB_HOST', 'localhost');           // ← anpassen
@@ -80,7 +80,6 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     step(true, 'Tabelle `collections`');
 
-    // collection_routes: driven_segments ist fester Bestandteil seit v2
     $pdo->exec("CREATE TABLE IF NOT EXISTS collection_routes (
         id              VARCHAR(32)  PRIMARY KEY,
         collection_id   VARCHAR(32)  NOT NULL,
@@ -107,13 +106,14 @@ try {
         status               ENUM('idle','driving','paused','offline') NOT NULL DEFAULT 'idle',
         active_collection_id VARCHAR(32)  DEFAULT NULL,
         active_route_id      VARCHAR(32)  DEFAULT NULL,
-        last_seen            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+        collecting           TINYINT(1)   NOT NULL DEFAULT 0
+                             COMMENT '1 = Sammelmodus aktiv, Segmente werden getrackt',
+        last_seen            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user (user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    step(true, 'Tabelle `vehicles`');
+    step(true, 'Tabelle `vehicles` (inkl. collecting + Index auf user_id)');
 
-    // ── FEHLENDE SPALTEN NACHFÜHREN (idempotentes Upgrade bestehender DB) ────────
-    // Jede neue Spalte hier eintragen. Wird bei CREATE TABLE IF NOT EXISTS
-    // bereits vorhandener Tabelle nicht automatisch hinzugefügt.
+    // ── FEHLENDE SPALTEN NACHFÜHREN (idempotentes Upgrade) ───────────────────
     section('Spalten-Upgrade (bestehende DB)');
 
     $requiredCols = [
@@ -126,6 +126,8 @@ try {
             'user_id'              => 'INT DEFAULT NULL',
             'active_collection_id' => 'VARCHAR(32) DEFAULT NULL',
             'active_route_id'      => 'VARCHAR(32) DEFAULT NULL',
+            // v4: Sammelmodus – nur wenn collecting=1 werden Segmente getrackt
+            'collecting'           => 'TINYINT(1) NOT NULL DEFAULT 0',
         ],
     ];
 
@@ -142,6 +144,20 @@ try {
                 step(true, "Spalte `$table.$col` ✓");
             }
         }
+    }
+
+    // Index auf vehicles.user_id für schnelle 1:1-Suche
+    try {
+        $idxExists = $pdo->query("SELECT COUNT(*) FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='vehicles' AND INDEX_NAME='idx_user'")->fetchColumn();
+        if (!$idxExists) {
+            $pdo->exec("ALTER TABLE vehicles ADD INDEX idx_user (user_id)");
+            step(true, 'Index vehicles.idx_user hinzugefügt ← NEU');
+        } else {
+            step(true, 'Index vehicles.idx_user ✓');
+        }
+    } catch(Exception $e) {
+        step(true, 'Index vehicles.idx_user – übersprungen');
     }
 
     // vehicles.status Enum-Definition sicherstellen
@@ -187,7 +203,7 @@ try {
         step(true, "Vorlagen vorhanden ($tplCount) – übersprungen");
     }
 
-    step(true, '─── Installation v3 abgeschlossen ───');
+    step(true, '─── Installation v4 abgeschlossen ───');
 
 } catch (Exception $e) {
     step(false, 'Fehler: '.$e->getMessage());
@@ -197,7 +213,7 @@ try {
 <h2>Protokoll</h2>
 <pre><?php foreach($steps as [$t,$m]):
     if($t==='sec'): ?><span class="sec">── <?=htmlspecialchars($m)?> ──</span>
-<?php else: ?><span class="<?=$t?'ok':'err'?>"><?=$t?'✅':'❌'?> <?=htmlspecialchars($m)?></span>
+<?php else: ?><span class="<?=$t?'ok':'err'?>""><?=$t?'✅':'❌'?> <?=htmlspecialchars($m)?></span>
 <?php endif; endforeach; ?></pre>
 
 <?php if(!$hasErr): ?>

@@ -32,13 +32,8 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--
 
 /* ── Sidebar ── */
 #sidebar{width:300px;min-width:300px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:10}
-
-/* Mobile handle – nur auf Mobile sichtbar */
 #mob-handle{display:none}
-
-/* Inner wrapper: auf Desktop flex-col, auf Mobile scrollbar */
 #sidebar-inner{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
-
 #hdr{padding:10px 14px;border-bottom:1px solid var(--border);background:#0c0e12;display:flex;align-items:center;gap:8px;flex-shrink:0}
 .logo{font-size:15px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);flex:1}
 .logo span{color:var(--text)}
@@ -46,14 +41,25 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--
 #col-box{padding:8px 14px;border-bottom:1px solid var(--border);background:#0d1014;flex-shrink:0}
 select{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:var(--r);font-family:var(--font-ui);font-size:13px;outline:none}
 select:focus{border-color:var(--accent)}
+
+/* ── Fahrzeug-Box ── */
 #id-box{padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
-#join-form{display:flex;gap:6px}
-#join-form input{flex:1;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:var(--r);font-family:var(--font-ui);font-size:13px;outline:none}
-#join-form input:focus{border-color:var(--accent)}
-#v-info{display:none;align-items:center;gap:8px}
-.vn{font-size:14px;font-weight:700;color:var(--accent);flex:1}
-.vs{font-size:10px;font-family:var(--font-mono);padding:2px 7px;border-radius:2px;text-transform:uppercase}
+#v-connecting{color:var(--muted);font-size:11px;font-family:var(--font-mono);padding:4px 0}
+#v-info{display:none}
+.v-name-row{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.vn{font-size:14px;font-weight:700;color:var(--accent);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vs{font-size:10px;font-family:var(--font-mono);padding:2px 7px;border-radius:2px;text-transform:uppercase;flex-shrink:0}
 .vs.idle{background:#1a2030;color:var(--muted)}.vs.driving{background:#0a2010;color:var(--green)}.vs.paused{background:#2a1a08;color:var(--orange)}
+#rename-row{display:none;gap:4px;margin-bottom:5px;align-items:center}
+#rename-in{flex:1;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:5px 8px;border-radius:var(--r);font-family:var(--font-ui);font-size:13px;outline:none}
+#rename-in:focus{border-color:var(--accent)}
+/* Sammelmodus-Button */
+#btn-collect{width:100%;margin-top:4px;font-size:12px;padding:7px 10px;border-radius:var(--r);border:1px solid;background:transparent;cursor:pointer;font-family:var(--font-ui);font-weight:600;letter-spacing:1px;text-transform:uppercase;transition:all .2s}
+#btn-collect.off{border-color:var(--muted);color:var(--muted)}
+#btn-collect.off:hover{border-color:var(--orange);color:var(--orange)}
+#btn-collect.on{border-color:var(--green);color:var(--green);background:rgba(168,255,62,.07)}
+#btn-collect.on:hover{background:rgba(168,255,62,.15)}
+
 #wake-banner{background:#0a1a10;border-bottom:1px solid var(--green);padding:5px 14px;font-size:11px;font-family:var(--font-mono);color:var(--green);display:none;flex-shrink:0;align-items:center;gap:8px}
 #gps-bar{padding:5px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:10px;background:#0c0e12;flex-shrink:0}
 .gdot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
@@ -61,7 +67,6 @@ select:focus{border-color:var(--accent)}
 .gdot.err{background:var(--red)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-/* Section headers */
 .sec-hdr{display:flex;align-items:center;gap:6px;padding:7px 14px 5px;flex-shrink:0}
 .sec-hdr .lbl{flex:1}
 .sec-hdr .bulk-btns{display:flex;gap:3px}
@@ -69,7 +74,6 @@ select:focus{border-color:var(--accent)}
 .bulk-btn:hover{border-color:var(--accent);color:var(--accent)}
 .bulk-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08)}
 
-/* Route list */
 #routes-wrap{flex:1;overflow-y:auto;min-height:0}
 #routes-wrap::-webkit-scrollbar{width:3px}
 #routes-wrap::-webkit-scrollbar-thumb{background:var(--border2)}
@@ -86,7 +90,6 @@ select:focus{border-color:var(--accent)}
 .rm{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:7px}
 .ra{display:flex;gap:4px;flex-wrap:wrap}
 
-/* Vehicle list */
 #veh-panel{border-top:1px solid var(--border);background:#0c0e12;flex-shrink:0;max-height:185px;overflow-y:auto}
 .vi{display:flex;align-items:center;gap:7px;font-size:12px;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--border);transition:opacity .2s,background .15s}
 .vi:last-child{border-bottom:none}
@@ -97,7 +100,6 @@ select:focus{border-color:var(--accent)}
 .vi-eye{font-size:12px;color:var(--muted);flex-shrink:0}
 .vi.v-hidden .vi-eye{color:#333}
 
-/* Buttons */
 .btn{background:transparent;border:1px solid var(--border2);color:var(--text);padding:6px 11px;border-radius:var(--r);font-family:var(--font-ui);font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s;white-space:nowrap;text-decoration:none;display:inline-block}
 .btn:hover{border-color:var(--accent);color:var(--accent)}
 .btn.p{border-color:var(--accent);color:var(--accent)}.btn.p:hover{background:var(--accent);color:var(--bg)}
@@ -105,7 +107,6 @@ select:focus{border-color:var(--accent)}
 .btn.d{border-color:var(--orange);color:var(--orange)}.btn.d:hover{background:var(--orange);color:var(--bg)}
 .btn.s{padding:3px 7px;font-size:10px}
 
-/* Map */
 #mc{flex:1;position:relative;min-width:0}
 #map{position:absolute;top:0;left:0;right:0;bottom:0}
 .leaflet-marker-icon{transition:transform 0ms linear}
@@ -132,58 +133,21 @@ select:focus{border-color:var(--accent)}
 #no-coll p{font-family:var(--font-mono);font-size:12px;line-height:1.8}
 
 /* ═══════════════════════════════════════════════════════════
-   MOBILE: Sidebar unten, zusammenrollbar, ein einziger Scroll
+   MOBILE
    ═══════════════════════════════════════════════════════════ */
 @media(max-width:700px){
   #app{flex-direction:column}
-
-  /* Karte oben */
   #mc{order:1;flex:1;min-height:0}
-
-  /* Sidebar unten – zusammenrollbar */
-  #sidebar{
-    order:2;
-    width:100%;min-width:0;
-    height:54vh;
-    flex-shrink:0;
-    border-right:none;
-    border-top:1px solid var(--border);
-    transition:height .25s ease;
-    overflow:hidden;
-  }
+  #sidebar{order:2;width:100%;min-width:0;height:54vh;flex-shrink:0;border-right:none;border-top:1px solid var(--border);transition:height .25s ease;overflow:hidden}
   #sidebar.collapsed{height:36px}
-
-  /* Handle-Leiste – nur auf Mobile */
-  #mob-handle{
-    display:flex;
-    align-items:center;justify-content:center;gap:8px;
-    height:36px;min-height:36px;
-    background:#0c0e12;
-    border-bottom:1px solid var(--border);
-    cursor:pointer;
-    flex-shrink:0;
-    font-size:11px;font-family:var(--font-mono);
-    color:var(--muted);
-    user-select:none;
-    -webkit-user-select:none;
-  }
+  #mob-handle{display:flex;align-items:center;justify-content:center;gap:8px;height:36px;min-height:36px;background:#0c0e12;border-bottom:1px solid var(--border);cursor:pointer;flex-shrink:0;font-size:11px;font-family:var(--font-mono);color:var(--muted);user-select:none;-webkit-user-select:none}
   #mob-handle:hover{color:var(--accent)}
   #mob-arrow{font-size:10px;transition:transform .25s}
   #sidebar.collapsed #mob-arrow{transform:rotate(180deg)}
-
-  /* Inner content: ein einziger Scroll statt mehrerer */
-  #sidebar-inner{
-    overflow-y:auto;
-    overflow-x:hidden;
-    -webkit-overflow-scrolling:touch;
-    flex:1;
-  }
+  #sidebar-inner{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;flex:1}
   #sidebar-inner::-webkit-scrollbar{width:3px}
   #sidebar-inner::-webkit-scrollbar-thumb{background:var(--border2)}
-
-  /* Routen-Wrap: kein eigener Scroll auf Mobile */
   #routes-wrap{overflow:visible!important;flex:none!important;min-height:0}
-  /* Fahrzeug-Panel: volle Höhe auf Mobile */
   #veh-panel{max-height:none!important;overflow:visible!important}
 }
 </style>
@@ -192,13 +156,11 @@ select:focus{border-color:var(--accent)}
 <div id="app">
 <aside id="sidebar">
 
-  <!-- Mobile: Anfass-Leiste zum Ein-/Ausklappen -->
   <div id="mob-handle" onclick="toggleSidebar()">
     <span id="mob-arrow">▼</span>
     <span id="mob-label">Menü</span>
   </div>
 
-  <!-- Gesamter Sidebar-Inhalt -->
   <div id="sidebar-inner">
     <div id="hdr">
       <div class="logo">♻ Papier<span>sammlung</span></div>
@@ -211,15 +173,25 @@ select:focus{border-color:var(--accent)}
       <select id="col-select"><option value="">Lade...</option></select>
     </div>
 
+    <!-- Fahrzeug (auto-verbunden, 1 pro User) -->
     <div id="id-box">
-      <div class="lbl" style="margin-bottom:5px">Fahrzeug / Team</div>
-      <div id="join-form">
-        <input id="vname-in" type="text" placeholder="Name eingeben..." maxlength="30">
-        <button class="btn p" id="join-btn">Los</button>
-      </div>
+      <div class="lbl" style="margin-bottom:5px">Mein Fahrzeug</div>
+      <div id="v-connecting">Verbinde...</div>
       <div id="v-info">
-        <div class="vn" id="disp-vname">—</div>
-        <div class="vs idle" id="disp-vs">Inaktiv</div>
+        <!-- Name + Umbenenn-Button + Status -->
+        <div class="v-name-row">
+          <div class="vn" id="disp-vname">—</div>
+          <button class="btn s" id="btn-rename-tog" title="Umbenennen" onclick="toggleRename()">✏</button>
+          <div class="vs idle" id="disp-vs">Inaktiv</div>
+        </div>
+        <!-- Inline-Rename -->
+        <div id="rename-row">
+          <input id="rename-in" type="text" maxlength="50" placeholder="Neuer Name...">
+          <button class="btn s p" onclick="confirmRename()">✓</button>
+          <button class="btn s" onclick="cancelRename()">✕</button>
+        </div>
+        <!-- Sammelmodus-Toggle -->
+        <button id="btn-collect" class="off" onclick="toggleCollecting()">🔴 Nicht am Sammeln</button>
       </div>
     </div>
 
@@ -285,19 +257,23 @@ select:focus{border-color:var(--accent)}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const API      = 'api.php';
-const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
-const POLL_MS  = <?= POLL_INTERVAL ?>;
-const OSRM     = 'https://router.project-osrm.org';
+const API        = 'api.php';
+const IS_ADMIN   = <?= $is_admin ? 'true' : 'false' ?>;
+const POLL_MS    = <?= POLL_INTERVAL ?>;
+const OSRM       = 'https://router.project-osrm.org';
+const MY_USERNAME = <?= json_encode($username) ?>;
 
-let myToken=localStorage.getItem('ps_token')||null;
-let myName=localStorage.getItem('ps_name')||null;
-let isJoined=false, currentColId=null;
-let myLat=null, myLng=null, wakeLock=null;
-let routes=[], vehicles=[];
-const routeLayers={}, vehicleMarkers={}, vehicleMarkerProps={};
+// ── State ─────────────────────────────────────────────────────────────────────
+let myToken     = localStorage.getItem('ps_token') || null;
+let myName      = localStorage.getItem('ps_name')  || null;
+let isJoined    = false;
+let isCollecting = false;
+let currentColId = null;
+let myLat = null, myLng = null, wakeLock = null;
+let routes = [], vehicles = [];
+const routeLayers = {}, vehicleMarkers = {}, vehicleMarkerProps = {};
 
-// ── Mobile Sidebar Toggle ─────────────────────────────────────────────────────
+// ── Mobile Sidebar ─────────────────────────────────────────────────────────────
 let sidebarCollapsed = false;
 function toggleSidebar(){
   sidebarCollapsed = !sidebarCollapsed;
@@ -305,7 +281,7 @@ function toggleSidebar(){
   document.getElementById('mob-label').textContent = sidebarCollapsed ? 'Menü' : 'Menü ausblenden';
 }
 
-// ── Routen-Sichtbarkeit (lokal) ───────────────────────────────────────────────
+// ── Routen-Sichtbarkeit ────────────────────────────────────────────────────────
 const localHiddenRoutes = new Set();
 function isRouteVisible(r){ return r.visible && !localHiddenRoutes.has(r.id); }
 function toggleRouteLocal(id){ localHiddenRoutes.has(id)?localHiddenRoutes.delete(id):localHiddenRoutes.add(id); renderRoutes();renderRouteList(); }
@@ -344,27 +320,20 @@ function updateVehicleSnaps(){
   });
 }
 
-// ── Service Worker ────────────────────────────────────────────────────────────
+// ── Service Worker ─────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
   navigator.serviceWorker.addEventListener('message',e=>{ if(e.data?.type==='REQUEST_GPS'&&myLat!==null&&isJoined) sendGPS(myLat,myLng); });
 }
+
 function sendGPS(lat, lng) {
   const payload = {token:myToken, lat, lng, collection_id:currentColId};
-  // OSRM-Snap mitschicken wenn im Cache vorhanden
-  // Threshold 0.002° (~170m Lat / ~120m Lng @47°N) – weit genug dass bei 30km/h
-  // alle 2s (= ~17m Bewegung) der Snap immer noch mitgeschickt wird.
-  // Server nutzt Snap-Position (auf Strasse korrigiert) für genauere Segment-Erkennung.
   const c = vehicleSnap[myToken];
   if (c && Math.abs(c.srcLat-lat)<0.002 && Math.abs(c.srcLng-lng)<0.002) {
     payload.snap_lat = c.lat;
     payload.snap_lng = c.lng;
   }
-  api('vehicle_position', payload).then(res => {
-    // Fehler loggen (z.B. DB-Problem) – Client ignoriert normalerweise die Antwort
-    if (res && res.error) console.warn('[GPS] vehicle_position error:', res.error);
-  }).catch(()=>{});
-  // Snap im Hintergrund aktualisieren wenn veraltet
+  api('vehicle_position', payload).catch(()=>{});
   if (!c || Math.abs(c.srcLat-lat)>0.0001 || Math.abs(c.srcLng-lng)>0.0001) {
     fetch(`${OSRM}/nearest/v1/driving/${lng},${lat}?number=1`)
       .then(r=>r.json()).then(d=>{
@@ -422,17 +391,104 @@ async function loadCollections(){
   if(saved&&cols.find(c=>c.id===saved)) sel.value=saved;
   currentColId=sel.value||cols[0].id; sel.value=currentColId;
   startPolling();
-  if(myToken&&myName){
-    const r=await api('vehicle_join',{name:myName,token:myToken,collection_id:currentColId});
-    if(!r.error){ isJoined=true; document.getElementById('join-form').style.display='none'; document.getElementById('v-info').style.display='flex'; document.getElementById('disp-vname').textContent=myName; showMapBtns(); setMyStatus('idle'); startGPS(); }
+  await autoJoin(currentColId);
+}
+
+document.getElementById('col-select').addEventListener('change', async function(){
+  currentColId=this.value; localStorage.setItem('ps_col',currentColId);
+  Object.values(routeLayers).flat().forEach(l=>map.removeLayer(l));
+  Object.values(vehicleMarkers).forEach(m=>map.removeLayer(m));
+  Object.keys(routeLayers).forEach(k=>delete routeLayers[k]);
+  Object.keys(vehicleMarkers).forEach(k=>delete vehicleMarkers[k]);
+  routes=[]; vehicles=[]; renderRouteList(); renderVehicleList(); updateStats();
+  if(currentColId){
+    pollState();
+    // Fahrzeug in neue Sammlung einbuchen
+    if(isJoined && myToken) {
+      await api('vehicle_join', {name: myName, collection_id: currentColId});
+    }
+  }
+});
+
+// ── Auto-Join (1 Fahrzeug pro User) ──────────────────────────────────────────
+async function autoJoin(colId){
+  document.getElementById('v-connecting').style.display='block';
+  document.getElementById('v-info').style.display='none';
+
+  const defaultName = myName || MY_USERNAME;
+  const r = await api('vehicle_join', {name: defaultName, collection_id: colId});
+  if(r.error){ notify('Verbindungsfehler: '+r.error,'w'); return; }
+
+  myToken      = r.token;
+  myName       = r.name;
+  isCollecting = r.collecting || false;
+  localStorage.setItem('ps_token', myToken);
+  localStorage.setItem('ps_name',  myName);
+  isJoined = true;
+
+  // UI aktualisieren
+  document.getElementById('v-connecting').style.display='none';
+  document.getElementById('v-info').style.display='block';
+  document.getElementById('disp-vname').textContent = myName;
+  setMyStatus(r.status || 'idle');
+  updateCollectingUI();
+  showMapBtns();
+  startGPS();
+  await requestWakeLock();
+}
+
+// ── Sammelmodus ───────────────────────────────────────────────────────────────
+function updateCollectingUI(){
+  const btn = document.getElementById('btn-collect');
+  if(isCollecting){
+    btn.textContent = '🟢 Am Sammeln';
+    btn.className = 'on';
+  } else {
+    btn.textContent = '🔴 Nicht am Sammeln';
+    btn.className = 'off';
   }
 }
-document.getElementById('col-select').addEventListener('change',function(){
-  currentColId=this.value; localStorage.setItem('ps_col',currentColId);
-  Object.values(routeLayers).flat().forEach(l=>map.removeLayer(l)); Object.values(vehicleMarkers).forEach(m=>map.removeLayer(m));
-  Object.keys(routeLayers).forEach(k=>delete routeLayers[k]); Object.keys(vehicleMarkers).forEach(k=>delete vehicleMarkers[k]);
-  routes=[]; vehicles=[]; renderRouteList(); renderVehicleList(); updateStats();
-  if(currentColId) pollState();
+
+async function toggleCollecting(){
+  if(!myToken) return;
+  const r = await api('vehicle_set_collecting', {token: myToken, collecting: !isCollecting});
+  if(r.error){ notify(r.error,'w'); return; }
+  isCollecting = r.collecting;
+  updateCollectingUI();
+  if(isCollecting) notify('🟢 Sammelmodus aktiviert – GPS wird aufgezeichnet','g');
+  else             notify('🔴 Sammelmodus deaktiviert – kein Tracking','w');
+}
+
+// ── Fahrzeug umbenennen ───────────────────────────────────────────────────────
+function toggleRename(){
+  const row = document.getElementById('rename-row');
+  const open = row.style.display === 'flex';
+  if(!open){
+    document.getElementById('rename-in').value = myName;
+    row.style.display = 'flex';
+    document.getElementById('rename-in').focus();
+  } else {
+    row.style.display = 'none';
+  }
+}
+async function confirmRename(){
+  const name = document.getElementById('rename-in').value.trim();
+  if(!name){ notify('Name darf nicht leer sein','w'); return; }
+  if(!myToken) return;
+  const r = await api('vehicle_rename', {token: myToken, name});
+  if(r.error){ notify(r.error,'w'); return; }
+  myName = r.name;
+  localStorage.setItem('ps_name', myName);
+  document.getElementById('disp-vname').textContent = myName;
+  document.getElementById('rename-row').style.display = 'none';
+  notify(`✓ Umbenannt in "${myName}"`, 'g');
+}
+function cancelRename(){
+  document.getElementById('rename-row').style.display = 'none';
+}
+document.getElementById('rename-in').addEventListener('keydown', e=>{
+  if(e.key==='Enter') confirmRename();
+  if(e.key==='Escape') cancelRename();
 });
 
 // ── Polling ───────────────────────────────────────────────────────────────────
@@ -448,24 +504,7 @@ async function pollState(){
   setTimeout(()=>pd.classList.remove('on'),400);
 }
 
-// ── Join ──────────────────────────────────────────────────────────────────────
-if(myName) document.getElementById('vname-in').value=myName;
-document.getElementById('join-btn').addEventListener('click',joinVehicle);
-document.getElementById('vname-in').addEventListener('keydown',e=>{if(e.key==='Enter')joinVehicle();});
-async function joinVehicle(){
-  const name=document.getElementById('vname-in').value.trim();
-  if(!name){notify('Bitte Name eingeben');return;}
-  if(!currentColId){notify('Bitte zuerst eine Sammlung wählen','w');return;}
-  const res=await api('vehicle_join',{name,token:myToken,collection_id:currentColId});
-  if(res.error){notify(res.error,'w');return;}
-  myToken=res.token; myName=res.name;
-  localStorage.setItem('ps_token',myToken); localStorage.setItem('ps_name',myName);
-  isJoined=true;
-  document.getElementById('join-form').style.display='none'; document.getElementById('v-info').style.display='flex';
-  document.getElementById('disp-vname').textContent=myName;
-  showMapBtns(); setMyStatus('idle'); notify(`${myName} verbunden`,'g');
-  startGPS(); await requestWakeLock();
-}
+// ── Map-Buttons ───────────────────────────────────────────────────────────────
 function showMapBtns(){ document.getElementById('btn-locate').style.display='block'; document.getElementById('btn-fit-all').style.display='block'; }
 function setMyStatus(s){ const el=document.getElementById('disp-vs'); el.className=`vs ${s}`; el.textContent={idle:'Inaktiv',driving:'Fährt',paused:'Pausiert'}[s]||s; }
 
@@ -488,7 +527,26 @@ function startGPS(){
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
-function renderAll(){ renderRoutes(); renderRouteList(); updateVehicleSnaps(); renderVehicleMarkers(); renderVehicleList(); updateStats(); if(isJoined){const me=vehicles.find(v=>v.token===myToken);if(me)setMyStatus(me.status);} }
+function renderAll(){
+  renderRoutes();
+  renderRouteList();
+  updateVehicleSnaps();
+  renderVehicleMarkers();
+  renderVehicleList();
+  updateStats();
+  if(isJoined){
+    const me=vehicles.find(v=>v.token===myToken);
+    if(me){
+      setMyStatus(me.status);
+      // Sammelmodus-Status vom Server synchronisieren
+      const serverCollecting = !!(me.collecting);
+      if(isCollecting !== serverCollecting){
+        isCollecting = serverCollecting;
+        updateCollectingUI();
+      }
+    }
+  }
+}
 
 function renderRoutes(){
   routes.forEach(route=>{
@@ -536,32 +594,27 @@ function renderVehicleMarkers(){
     const snap=vehicleSnap[v.token];
     const snapFresh=!self&&snap&&Math.abs(snap.srcLat-v.lat)<SNAP_THRESHOLD&&Math.abs(snap.srcLng-v.lng)<SNAP_THRESHOLD;
     const dLat=snapFresh?snap.lat:v.lat, dLng=snapFresh?snap.lng:v.lng;
-    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':'#00d4ff', sz=self?18:12;
+    // Farbe: eigenes Fahrzeug=gold, paused=orange, nicht-sammelnd=gedimmt, sammelnd=accent
+    const collecting=!!(v.collecting);
+    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':collecting?'#00d4ff':'#4a5a6a';
+    const sz=self?18:12;
 
     if(vehicleMarkers[v.token]){
       const prev=vehicleMarkerProps[v.token];
       if(!prev||prev.col!==col||prev.sz!==sz){
-        // Status/Farbe geändert → Icon neu erstellen (DOM-Element wird ersetzt)
         vehicleMarkers[v.token].setIcon(makeVehicleIcon(col,sz,self));
         vehicleMarkerProps[v.token]={col,sz};
-        // Nach setIcon: animated class auf neuem Element setzen (nächster Frame)
-        requestAnimationFrame(()=>{
-          const el=vehicleMarkers[v.token]?.getElement();
-          if(el) el.classList.add('animated');
-        });
+        requestAnimationFrame(()=>{ const el=vehicleMarkers[v.token]?.getElement(); if(el) el.classList.add('animated'); });
       }
-      // Position updaten – animated class ist auf bestehendem Element → CSS-Transition läuft
       const el=vehicleMarkers[v.token].getElement();
       if(el&&!el.classList.contains('animated')) el.classList.add('animated');
       vehicleMarkers[v.token].setLatLng([dLat,dLng]);
-      vehicleMarkers[v.token].getTooltip()?.setContent(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`);
+      vehicleMarkers[v.token].getTooltip()?.setContent(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}${collecting?' 🟢':' ○'}`);
     } else {
       const marker=L.marker([dLat,dLng],{icon:makeVehicleIcon(col,sz,self),zIndexOffset:self?1000:0}).addTo(map)
-        .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}`,{permanent:self,direction:'top',offset:[0,-(sz/2+4)],className:'rtt'});
+        .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}${collecting?' 🟢':' ○'}`,{permanent:self,direction:'top',offset:[0,-(sz/2+4)],className:'rtt'});
       vehicleMarkers[v.token]=marker;
       vehicleMarkerProps[v.token]={col,sz};
-      // Kurze Verzögerung: erst nach erstem Paint animated aktivieren
-      // damit der initiale Positionssprung nicht animiert wird
       setTimeout(()=>{const el=marker.getElement();if(el)el.classList.add('animated');},200);
     }
   });
@@ -590,7 +643,11 @@ function renderRouteList(){
     card.querySelector('.btn-foc')?.addEventListener('click',()=>{ if(route.coordinates.length) map.fitBounds(L.latLngBounds(route.coordinates),{padding:[40,40]}); });
     card.querySelector('.btn-vis')?.addEventListener('click',()=>toggleRouteLocal(route.id));
     card.querySelector('.btn-start')?.addEventListener('click',async()=>{
-      if(!isJoined){notify('Bitte zuerst verbinden','w');return;}
+      if(!isJoined){notify('Nicht verbunden','w');return;}
+      if(!isCollecting){
+        // Warnung: Sammelmodus inaktiv – Route starten erlaubt, aber kein Tracking
+        notify('⚠ Sammelmodus inaktiv – aktiviere ihn für GPS-Aufzeichnung','w');
+      }
       const r=await api('route_start',{token:myToken,route_id:route.id});
       if(r.error){notify(r.error,'w');return;}
       setMyStatus('driving'); pollState(); await requestWakeLock();
@@ -608,11 +665,12 @@ function renderVehicleList(){
   if(!vehicles.length){c.innerHTML='<div style="padding:8px 14px;color:var(--muted);font-size:11px;font-family:var(--font-mono)">Keine Fahrzeuge</div>';return;}
   c.innerHTML=vehicles.map(v=>{
     const self=v.token===myToken, vis=isVehicleVisible(v);
-    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':v.status==='idle'?'var(--muted)':'#00d4ff';
+    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':v.status==='idle'?'var(--muted)':v.collecting?'#00d4ff':'#4a5a6a';
+    const collectBadge=v.collecting?'<span style="font-size:9px;color:var(--green);font-family:var(--font-mono);margin-left:3px">●SAM</span>':'';
     return `<div class="vi${vis?'':' v-hidden'}" onclick="toggleVehicle('${v.token}')">
       <div class="vd ${v.status}" style="background:${col}"></div>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.name}${self?' <small style="color:var(--accent)">(Ich)</small>':''}</div>
+        <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.name}${self?' <small style="color:var(--accent)">(Ich)</small>':''}${collectBadge}</div>
         <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">${v.active_route_id?(rm[v.active_route_id]||'—'):'—'}</div>
       </div>
       <span class="vi-eye">${vis?'👁':'○'}</span>
