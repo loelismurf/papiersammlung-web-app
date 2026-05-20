@@ -53,7 +53,6 @@ select:focus{border-color:var(--accent)}
 #rename-row{display:none;gap:4px;margin-bottom:5px;align-items:center}
 #rename-in{flex:1;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:5px 8px;border-radius:var(--r);font-family:var(--font-ui);font-size:13px;outline:none}
 #rename-in:focus{border-color:var(--accent)}
-/* Sammelmodus-Button */
 #btn-collect{width:100%;margin-top:4px;font-size:12px;padding:7px 10px;border-radius:var(--r);border:1px solid;background:transparent;cursor:pointer;font-family:var(--font-ui);font-weight:600;letter-spacing:1px;text-transform:uppercase;transition:all .2s}
 #btn-collect.off{border-color:var(--muted);color:var(--muted)}
 #btn-collect.off:hover{border-color:var(--orange);color:var(--orange)}
@@ -78,7 +77,7 @@ select:focus{border-color:var(--accent)}
 #routes-wrap::-webkit-scrollbar{width:3px}
 #routes-wrap::-webkit-scrollbar-thumb{background:var(--border2)}
 #route-list{padding:4px 8px 8px}
-.rc{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:9px 11px;position:relative;overflow:hidden;margin-bottom:6px;transition:opacity .2s}
+.rc{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:9px 11px;position:relative;overflow:hidden;margin-bottom:6px}
 .rc::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--rc,var(--muted))}
 .rc.r-hidden{opacity:.35}
 .rt{display:flex;align-items:center;gap:6px;margin-bottom:5px}
@@ -90,15 +89,16 @@ select:focus{border-color:var(--accent)}
 .rm{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:7px}
 .ra{display:flex;gap:4px;flex-wrap:wrap}
 
-#veh-panel{border-top:1px solid var(--border);background:#0c0e12;flex-shrink:0;max-height:185px;overflow-y:auto}
-.vi{display:flex;align-items:center;gap:7px;font-size:12px;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--border);transition:opacity .2s,background .15s}
+#veh-panel{border-top:1px solid var(--border);background:#0c0e12;flex-shrink:0;max-height:200px;overflow-y:auto}
+.vi{display:flex;align-items:center;gap:7px;font-size:12px;padding:6px 10px;border-bottom:1px solid var(--border)}
 .vi:last-child{border-bottom:none}
-.vi:hover{background:rgba(255,255,255,.03)}
 .vi.v-hidden{opacity:.38}
-.vd{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0}
-.vd.paused{background:var(--orange)}.vd.idle{background:var(--muted)}
-.vi-eye{font-size:12px;color:var(--muted);flex-shrink:0}
-.vi.v-hidden .vi-eye{color:#333}
+.vd{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.vi-eye{font-size:12px;color:var(--muted);flex-shrink:0;cursor:pointer}
+.vi-eye:hover{color:var(--accent)}
+.vi-track{font-size:12px;flex-shrink:0;cursor:pointer;color:var(--muted);transition:color .15s}
+.vi-track:hover{color:var(--accent)}
+.vi-track.on{color:var(--accent)}
 
 .btn{background:transparent;border:1px solid var(--border2);color:var(--text);padding:6px 11px;border-radius:var(--r);font-family:var(--font-ui);font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s;white-space:nowrap;text-decoration:none;display:inline-block}
 .btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -107,6 +107,7 @@ select:focus{border-color:var(--accent)}
 .btn.d{border-color:var(--orange);color:var(--orange)}.btn.d:hover{background:var(--orange);color:var(--bg)}
 .btn.s{padding:3px 7px;font-size:10px}
 
+/* ── Karte ── */
 #mc{flex:1;position:relative;min-width:0}
 #map{position:absolute;top:0;left:0;right:0;bottom:0}
 .leaflet-marker-icon{transition:transform 0ms linear}
@@ -118,6 +119,20 @@ select:focus{border-color:var(--accent)}
 #map-actions{position:absolute;bottom:58px;right:10px;z-index:500;display:flex;flex-direction:column;gap:5px}
 .map-btn{background:rgba(10,12,15,.92);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:8px 10px;font-size:15px;cursor:pointer;line-height:1;transition:border-color .2s;display:none}
 .map-btn:hover{border-color:var(--accent)}
+
+/* ── Nicht-Sammeln-Warnung auf Karte ── */
+#no-collect-warn{
+  position:absolute;top:58px;left:50%;transform:translateX(-50%);
+  z-index:600;display:none;
+  background:rgba(255,107,53,.92);backdrop-filter:blur(6px);
+  border:1px solid var(--orange);border-radius:var(--r);
+  padding:8px 18px;font-size:12px;font-family:var(--font-mono);
+  color:#fff;cursor:pointer;white-space:nowrap;
+  animation:warnpulse 2s infinite;
+  text-align:center;
+}
+@keyframes warnpulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,53,.4)}50%{box-shadow:0 0 0 8px rgba(255,107,53,0)}}
+
 #pi{position:absolute;bottom:18px;right:10px;z-index:500;display:flex;align-items:center;gap:6px;background:rgba(10,12,15,.88);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:6px 11px;font-size:10px;font-family:var(--font-mono)}
 .pd{width:6px;height:6px;border-radius:50%;background:var(--muted)}
 .pd.on{background:var(--green);box-shadow:0 0 4px var(--green)}
@@ -132,23 +147,51 @@ select:focus{border-color:var(--accent)}
 #no-coll .big{font-size:44px;margin-bottom:10px}
 #no-coll p{font-family:var(--font-mono);font-size:12px;line-height:1.8}
 
-/* ═══════════════════════════════════════════════════════════
-   MOBILE
-   ═══════════════════════════════════════════════════════════ */
+/* ── Mobile: Sidebar unten ── */
 @media(max-width:700px){
   #app{flex-direction:column}
-  #mc{order:1;flex:1;min-height:0}
+  #mc{order:1;flex:1;min-height:0;position:relative}
   #sidebar{order:2;width:100%;min-width:0;height:54vh;flex-shrink:0;border-right:none;border-top:1px solid var(--border);transition:height .25s ease;overflow:hidden}
-  #sidebar.collapsed{height:36px}
-  #mob-handle{display:flex;align-items:center;justify-content:center;gap:8px;height:36px;min-height:36px;background:#0c0e12;border-bottom:1px solid var(--border);cursor:pointer;flex-shrink:0;font-size:11px;font-family:var(--font-mono);color:var(--muted);user-select:none;-webkit-user-select:none}
-  #mob-handle:hover{color:var(--accent)}
-  #mob-arrow{font-size:10px;transition:transform .25s}
-  #sidebar.collapsed #mob-arrow{transform:rotate(180deg)}
+  #sidebar.collapsed{height:44px}
+
+  /* Handle-Leiste am OBEREN Rand der Sidebar (= sichtbare Unterseite des Screens) */
+  #mob-handle{
+    display:flex;align-items:center;justify-content:space-between;
+    height:44px;min-height:44px;
+    background:#0c0e12;
+    border-bottom:1px solid var(--border);
+    cursor:pointer;flex-shrink:0;
+    padding:0 16px;
+    user-select:none;-webkit-user-select:none;
+    position:sticky;top:0;z-index:1;
+  }
+  .mob-handle-left{display:flex;align-items:center;gap:8px;font-size:12px;font-family:var(--font-mono);color:var(--muted)}
+  .mob-handle-right{font-size:18px;color:var(--muted);transition:transform .25s}
+  #sidebar.collapsed .mob-handle-right{transform:rotate(180deg)}
+  #sidebar.collapsed .mob-handle-left{color:var(--accent)}
+  #mob-handle:hover .mob-handle-left{color:var(--accent)}
+  #mob-handle:hover .mob-handle-right{color:var(--accent)}
+
+  /* Floating-Button auf Karte wenn Sidebar kollabiert – nie verpassbar */
+  #mob-open-btn{
+    display:none;position:absolute;bottom:60px;right:10px;z-index:550;
+    background:rgba(10,12,15,.92);backdrop-filter:blur(6px);
+    border:1px solid var(--accent);border-radius:var(--r);
+    padding:10px 14px;font-size:20px;cursor:pointer;
+    box-shadow:0 0 12px rgba(0,212,255,.3);
+  }
+
   #sidebar-inner{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;flex:1}
   #sidebar-inner::-webkit-scrollbar{width:3px}
   #sidebar-inner::-webkit-scrollbar-thumb{background:var(--border2)}
-  #routes-wrap{overflow:visible!important;flex:none!important;min-height:0}
+  #routes-wrap{overflow:visible!important;flex:none!important}
   #veh-panel{max-height:none!important;overflow:visible!important}
+  /* Warnung: nicht unter dem Handle verstecken */
+  #no-collect-warn{top:10px;}
+}
+@media(max-width:700px) and (display-mode:standalone){
+  /* PWA: safe-area Puffer für Home-Indicator */
+  #mob-handle{padding-bottom:env(safe-area-inset-bottom,0)}
 }
 </style>
 </head>
@@ -156,9 +199,13 @@ select:focus{border-color:var(--accent)}
 <div id="app">
 <aside id="sidebar">
 
+  <!-- Mobile: Anfass-Leiste (immer sichtbar, auch kollabiert) -->
   <div id="mob-handle" onclick="toggleSidebar()">
-    <span id="mob-arrow">▼</span>
-    <span id="mob-label">Menü</span>
+    <div class="mob-handle-left">
+      <span id="mob-status-icon">☰</span>
+      <span id="mob-label">Papiersammlung</span>
+    </div>
+    <div class="mob-handle-right">▲</div>
   </div>
 
   <div id="sidebar-inner">
@@ -178,19 +225,16 @@ select:focus{border-color:var(--accent)}
       <div class="lbl" style="margin-bottom:5px">Mein Fahrzeug</div>
       <div id="v-connecting">Verbinde...</div>
       <div id="v-info">
-        <!-- Name + Umbenenn-Button + Status -->
         <div class="v-name-row">
           <div class="vn" id="disp-vname">—</div>
           <button class="btn s" id="btn-rename-tog" title="Umbenennen" onclick="toggleRename()">✏</button>
           <div class="vs idle" id="disp-vs">Inaktiv</div>
         </div>
-        <!-- Inline-Rename -->
         <div id="rename-row">
           <input id="rename-in" type="text" maxlength="50" placeholder="Neuer Name...">
           <button class="btn s p" onclick="confirmRename()">✓</button>
           <button class="btn s" onclick="cancelRename()">✕</button>
         </div>
-        <!-- Sammelmodus-Toggle -->
         <button id="btn-collect" class="off" onclick="toggleCollecting()">🔴 Nicht am Sammeln</button>
       </div>
     </div>
@@ -200,6 +244,7 @@ select:focus{border-color:var(--accent)}
     <div id="gps-bar">
       <div class="gdot" id="gdot"></div>
       <span id="gps-txt" style="color:var(--muted)">GPS inaktiv</span>
+      <span id="speed-badge" style="display:none;margin-left:auto;background:#1a2030;color:var(--accent);font-size:10px;font-family:var(--font-mono);padding:1px 6px;border-radius:2px;white-space:nowrap"></span>
     </div>
 
     <!-- Routen -->
@@ -210,9 +255,7 @@ select:focus{border-color:var(--accent)}
         <button class="bulk-btn" onclick="hideAllRoutes()">🚫 Keine</button>
       </div>
     </div>
-    <div id="routes-wrap">
-      <div id="route-list"></div>
-    </div>
+    <div id="routes-wrap"><div id="route-list"></div></div>
 
     <!-- Fahrzeuge -->
     <div class="sec-hdr" style="border-top:1px solid var(--border)">
@@ -223,11 +266,12 @@ select:focus{border-color:var(--accent)}
         <button class="bulk-btn" onclick="deselectAllVehicles()">🚫</button>
       </div>
     </div>
-    <div id="veh-panel">
-      <div id="veh-list"></div>
-    </div>
+    <div id="veh-panel"><div id="veh-list"></div></div>
   </div><!-- /sidebar-inner -->
 </aside>
+
+<!-- Floating-Button zum Aufklappen (nur Mobile, nur wenn kollabiert) -->
+<div id="mob-open-btn" onclick="toggleSidebar()" title="Menü öffnen">☰</div>
 
 <div id="mc">
   <div id="map"></div>
@@ -235,6 +279,10 @@ select:focus{border-color:var(--accent)}
     <div class="mb"><div class="ml">Fahrzeuge</div><div class="mv" id="sv">0</div></div>
     <div class="mb"><div class="ml">Aktiv</div><div class="mv" id="sa">0</div></div>
     <div class="mb"><div class="ml">Erledigt</div><div class="mv" id="sd">0</div></div>
+  </div>
+  <!-- Warnung: Fahrzeug bewegt sich, aber Sammelmodus ist aus -->
+  <div id="no-collect-warn" onclick="handleWarnClick()">
+    ⚠ Nicht am Sammeln! Antippen zum Aktivieren.
   </div>
   <div id="notifs"></div>
   <div id="map-actions">
@@ -264,21 +312,86 @@ const OSRM       = 'https://router.project-osrm.org';
 const MY_USERNAME = <?= json_encode($username) ?>;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let myToken     = localStorage.getItem('ps_token') || null;
-let myName      = localStorage.getItem('ps_name')  || null;
-let isJoined    = false;
+let myToken      = localStorage.getItem('ps_token') || null;
+let myName       = localStorage.getItem('ps_name')  || null;
+let isJoined     = false;
 let isCollecting = false;
 let currentColId = null;
-let myLat = null, myLng = null, wakeLock = null;
+let myLat = null, myLng = null, mySpeed = null, wakeLock = null;
 let routes = [], vehicles = [];
 const routeLayers = {}, vehicleMarkers = {}, vehicleMarkerProps = {};
+
+// ── Fahrspur pro Fahrzeug ─────────────────────────────────────────────────────
+const trackLayers   = {};  // token → Leaflet polyline
+const trackVisible  = {};  // token → bool
+const trackLoading  = new Set();
+
+async function loadTrack(token) {
+  if (!currentColId || trackLoading.has(token)) return;
+  trackLoading.add(token);
+  try {
+    const qs = new URLSearchParams({action:'vehicle_track', token, collection_id:currentColId});
+    const data = await (await fetch(`${API}?${qs}`)).json();
+    if (data.track && data.track.length > 1) {
+      if (trackLayers[token]) map.removeLayer(trackLayers[token]);
+      const veh = vehicles.find(v=>v.token===token);
+      const col = veh?.token===myToken ? '#ffd700' : (veh?.collecting ? '#00d4ff' : '#4a5a6a');
+      trackLayers[token] = L.polyline(data.track, {
+        color: col, weight:3, opacity:0.65, dashArray:'6,4', lineCap:'round'
+      }).addTo(map);
+    }
+  } catch(e){}
+  trackLoading.delete(token);
+}
+function toggleTrack(token) {
+  trackVisible[token] = !trackVisible[token];
+  if (trackVisible[token]) {
+    loadTrack(token);
+  } else {
+    if (trackLayers[token]) { map.removeLayer(trackLayers[token]); delete trackLayers[token]; }
+  }
+  renderVehicleList();
+}
+// Sichtbare Tracks alle 10s neu laden (neue Punkte)
+let trackRefreshCounter = 0;
+function maybeRefreshTracks() {
+  trackRefreshCounter++;
+  if (trackRefreshCounter % 4 !== 0) return; // alle ~10s
+  Object.keys(trackVisible).forEach(t => { if (trackVisible[t]) loadTrack(t); });
+}
 
 // ── Mobile Sidebar ─────────────────────────────────────────────────────────────
 let sidebarCollapsed = false;
 function toggleSidebar(){
   sidebarCollapsed = !sidebarCollapsed;
   document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
-  document.getElementById('mob-label').textContent = sidebarCollapsed ? 'Menü' : 'Menü ausblenden';
+  // Floating-Button anzeigen wenn kollabiert (nur auf Mobile via CSS-Klasse)
+  const openBtn = document.getElementById('mob-open-btn');
+  if (openBtn) openBtn.style.display = sidebarCollapsed ? 'block' : 'none';
+  // Label aktualisieren
+  document.getElementById('mob-label').textContent = sidebarCollapsed ? 'Menü öffnen' : 'Papiersammlung';
+}
+// Floating-Button immer korrekt initialisieren
+window.addEventListener('load', () => {
+  const openBtn = document.getElementById('mob-open-btn');
+  if (openBtn) openBtn.style.display = 'none'; // initial nicht kollabiert
+});
+
+// ── Nicht-Sammeln-Warnung ─────────────────────────────────────────────────────
+const WARN_SPEED_KMH = 2.0; // km/h Schwelle für Warnung
+let warnVisible = false;
+function updateCollectingWarn(speedKmh) {
+  const warn = document.getElementById('no-collect-warn');
+  const shouldWarn = isJoined && !isCollecting && speedKmh >= WARN_SPEED_KMH;
+  if (shouldWarn !== warnVisible) {
+    warnVisible = shouldWarn;
+    warn.style.display = shouldWarn ? 'block' : 'none';
+  }
+}
+function handleWarnClick() {
+  // Sidebar öffnen (falls mobil-kollabiert) und direkt Sammelmodus aktivieren
+  if (sidebarCollapsed) toggleSidebar();
+  toggleCollecting();
 }
 
 // ── Routen-Sichtbarkeit ────────────────────────────────────────────────────────
@@ -313,34 +426,65 @@ function updateVehicleSnaps(){
     snapInFlight.add(v.token);
     fetch(`${OSRM}/nearest/v1/driving/${v.lng},${v.lat}?number=1`)
       .then(r=>r.json()).then(d=>{
-        if(d.code==='Ok'&&d.waypoints?.[0]){ const[lng,lat]=d.waypoints[0].location; vehicleSnap[v.token]={srcLat:v.lat,srcLng:v.lng,lat,lng}; }
+        if(d.code==='Ok'&&d.waypoints?.[0]){const[lng,lat]=d.waypoints[0].location;vehicleSnap[v.token]={srcLat:v.lat,srcLng:v.lng,lat,lng};}
         else vehicleSnap[v.token]={srcLat:v.lat,srcLng:v.lng,lat:v.lat,lng:v.lng};
-        snapInFlight.delete(v.token); renderVehicleMarkers();
-      }).catch(()=>{ vehicleSnap[v.token]={srcLat:v.lat,srcLng:v.lng,lat:v.lat,lng:v.lng}; snapInFlight.delete(v.token); });
+        snapInFlight.delete(v.token);renderVehicleMarkers();
+      }).catch(()=>{vehicleSnap[v.token]={srcLat:v.lat,srcLng:v.lng,lat:v.lat,lng:v.lng};snapInFlight.delete(v.token);});
   });
 }
 
-// ── Service Worker ─────────────────────────────────────────────────────────────
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
-  navigator.serviceWorker.addEventListener('message',e=>{ if(e.data?.type==='REQUEST_GPS'&&myLat!==null&&isJoined) sendGPS(myLat,myLng); });
+// ── Service Worker + Background GPS ──────────────────────────────────────────
+let swRegistration = null;
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js')
+    .then(reg => { swRegistration = reg; })
+    .catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'REQUEST_GPS' && myLat !== null && isJoined) sendGPS(myLat, myLng);
+  });
 }
 
+// Notification-Berechtigung anfordern
+async function requestNotificationPerm() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const p = await Notification.requestPermission();
+  return p === 'granted';
+}
+
+// App in Hintergrund → SW aktivieren für Background-GPS
+document.addEventListener('visibilitychange', async () => {
+  const sw = swRegistration?.active || (await navigator.serviceWorker?.ready)?.active;
+  if (!sw) return;
+  if (document.visibilityState === 'hidden' && isJoined && isCollecting) {
+    sw.postMessage({ type: 'BG_START' });
+  } else if (document.visibilityState === 'visible') {
+    sw.postMessage({ type: 'BG_STOP' });
+    if (isJoined && !wakeLock) await requestWakeLock();
+  }
+});
+
 function sendGPS(lat, lng) {
-  const payload = {token:myToken, lat, lng, collection_id:currentColId};
+  const payload = { token:myToken, lat, lng, collection_id:currentColId, speed:mySpeed };
   const c = vehicleSnap[myToken];
   if (c && Math.abs(c.srcLat-lat)<0.002 && Math.abs(c.srcLng-lng)<0.002) {
-    payload.snap_lat = c.lat;
-    payload.snap_lng = c.lng;
+    payload.snap_lat = c.lat; payload.snap_lng = c.lng;
   }
-  api('vehicle_position', payload).catch(()=>{});
+  // Im Vordergrund: direkt ans API
+  // Im Hintergrund: der SW sendet es via BG_START/REQUEST_GPS Loop
+  if (document.visibilityState !== 'hidden') {
+    api('vehicle_position', payload).catch(() => {});
+  } else {
+    // SW den letzten bekannten Stand mitteilen, damit er ihn im BG senden kann
+    const sw = swRegistration?.active;
+    if (sw) sw.postMessage({ type: 'GPS_UPDATE', ...payload });
+  }
+  // OSRM-Snap aktualisieren
   if (!c || Math.abs(c.srcLat-lat)>0.0001 || Math.abs(c.srcLng-lng)>0.0001) {
     fetch(`${OSRM}/nearest/v1/driving/${lng},${lat}?number=1`)
       .then(r=>r.json()).then(d=>{
-        if(d.code==='Ok'&&d.waypoints?.[0]){
-          const[sl,slt]=d.waypoints[0].location;
-          vehicleSnap[myToken]={srcLat:lat,srcLng:lng,lat:slt,lng:sl};
-        }
+        if(d.code==='Ok'&&d.waypoints?.[0]){const[sl,slt]=d.waypoints[0].location;vehicleSnap[myToken]={srcLat:lat,srcLng:lng,lat:slt,lng:sl};}
       }).catch(()=>{});
   }
 }
@@ -349,19 +493,18 @@ function sendGPS(lat, lng) {
 const map=L.map('map',{center:[47.3769,8.5417],zoom:13,zoomControl:false});
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
 L.control.zoom({position:'bottomleft'}).addTo(map);
-document.getElementById('btn-locate').addEventListener('click',()=>{ if(myLat!==null) map.setView([myLat,myLng],17); else notify('Noch keine GPS-Position','w'); });
+document.getElementById('btn-locate').addEventListener('click',()=>{if(myLat!==null)map.setView([myLat,myLng],17);else notify('Noch keine GPS-Position','w');});
 document.getElementById('btn-fit-all').addEventListener('click',()=>{
   const all=routes.filter(r=>isRouteVisible(r)&&r.coordinates.length).flatMap(r=>r.coordinates);
-  if(all.length) map.fitBounds(L.latLngBounds(all),{padding:[30,30]}); else notify('Keine sichtbaren Routen','w');
+  if(all.length)map.fitBounds(L.latLngBounds(all),{padding:[30,30]});else notify('Keine sichtbaren Routen','w');
 });
 
 // ── Wake Lock ─────────────────────────────────────────────────────────────────
 async function requestWakeLock(){
-  if(!('wakeLock' in navigator)) return;
-  try{ wakeLock=await navigator.wakeLock.request('screen'); document.getElementById('wake-banner').style.display='flex'; wakeLock.addEventListener('release',()=>{document.getElementById('wake-banner').style.display='none';wakeLock=null;}); }catch(e){}
+  if(!('wakeLock' in navigator))return;
+  try{wakeLock=await navigator.wakeLock.request('screen');document.getElementById('wake-banner').style.display='flex';wakeLock.addEventListener('release',()=>{document.getElementById('wake-banner').style.display='none';wakeLock=null;});}catch(e){}
 }
-async function releaseWakeLock(){ if(wakeLock){await wakeLock.release();wakeLock=null;} document.getElementById('wake-banner').style.display='none'; }
-document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState==='visible'&&isJoined&&!wakeLock) await requestWakeLock(); });
+async function releaseWakeLock(){if(wakeLock){await wakeLock.release();wakeLock=null;}document.getElementById('wake-banner').style.display='none';}
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(action,body={}){
@@ -380,7 +523,7 @@ async function loadCollections(){
   if(!Array.isArray(cols)||!cols.length){
     sel.innerHTML='<option value="">Keine aktive Sammlung</option>';
     document.getElementById('no-coll').style.display='block';
-    document.getElementById('pt').textContent='Keine Sammlung'; return;
+    document.getElementById('pt').textContent='Keine Sammlung';return;
   }
   sel.innerHTML=cols.map(c=>{
     const d=new Date(c.collection_date+'T00:00:00').toLocaleDateString('de-CH');
@@ -388,125 +531,99 @@ async function loadCollections(){
     return `<option value="${c.id}">${c.name} – ${d}${st}</option>`;
   }).join('');
   const saved=localStorage.getItem('ps_col');
-  if(saved&&cols.find(c=>c.id===saved)) sel.value=saved;
-  currentColId=sel.value||cols[0].id; sel.value=currentColId;
+  if(saved&&cols.find(c=>c.id===saved))sel.value=saved;
+  currentColId=sel.value||cols[0].id;sel.value=currentColId;
   startPolling();
   await autoJoin(currentColId);
 }
 
-document.getElementById('col-select').addEventListener('change', async function(){
-  currentColId=this.value; localStorage.setItem('ps_col',currentColId);
+document.getElementById('col-select').addEventListener('change',async function(){
+  currentColId=this.value;localStorage.setItem('ps_col',currentColId);
   Object.values(routeLayers).flat().forEach(l=>map.removeLayer(l));
   Object.values(vehicleMarkers).forEach(m=>map.removeLayer(m));
+  Object.values(trackLayers).forEach(l=>map.removeLayer(l));
   Object.keys(routeLayers).forEach(k=>delete routeLayers[k]);
   Object.keys(vehicleMarkers).forEach(k=>delete vehicleMarkers[k]);
-  routes=[]; vehicles=[]; renderRouteList(); renderVehicleList(); updateStats();
-  if(currentColId){
-    pollState();
-    // Fahrzeug in neue Sammlung einbuchen
-    if(isJoined && myToken) {
-      await api('vehicle_join', {name: myName, collection_id: currentColId});
-    }
-  }
+  Object.keys(trackLayers).forEach(k=>delete trackLayers[k]);
+  routes=[];vehicles=[];renderRouteList();renderVehicleList();updateStats();
+  if(currentColId){pollState();if(isJoined&&myToken)await api('vehicle_join',{name:myName,collection_id:currentColId});}
 });
 
-// ── Auto-Join (1 Fahrzeug pro User) ──────────────────────────────────────────
+// ── Auto-Join ─────────────────────────────────────────────────────────────────
 async function autoJoin(colId){
   document.getElementById('v-connecting').style.display='block';
   document.getElementById('v-info').style.display='none';
-
-  const defaultName = myName || MY_USERNAME;
-  const r = await api('vehicle_join', {name: defaultName, collection_id: colId});
-  if(r.error){ notify('Verbindungsfehler: '+r.error,'w'); return; }
-
-  myToken      = r.token;
-  myName       = r.name;
-  isCollecting = r.collecting || false;
-  localStorage.setItem('ps_token', myToken);
-  localStorage.setItem('ps_name',  myName);
-  isJoined = true;
-
-  // UI aktualisieren
+  const r=await api('vehicle_join',{name:myName||MY_USERNAME,collection_id:colId});
+  if(r.error){notify('Verbindungsfehler: '+r.error,'w');return;}
+  myToken=r.token; myName=r.name; isCollecting=r.collecting||false;
+  localStorage.setItem('ps_token',myToken); localStorage.setItem('ps_name',myName);
+  isJoined=true;
   document.getElementById('v-connecting').style.display='none';
   document.getElementById('v-info').style.display='block';
-  document.getElementById('disp-vname').textContent = myName;
-  setMyStatus(r.status || 'idle');
-  updateCollectingUI();
-  showMapBtns();
-  startGPS();
+  document.getElementById('disp-vname').textContent=myName;
+  setMyStatus(r.status||'idle'); updateCollectingUI(); showMapBtns(); startGPS();
   await requestWakeLock();
 }
 
 // ── Sammelmodus ───────────────────────────────────────────────────────────────
 function updateCollectingUI(){
-  const btn = document.getElementById('btn-collect');
-  if(isCollecting){
-    btn.textContent = '🟢 Am Sammeln';
-    btn.className = 'on';
-  } else {
-    btn.textContent = '🔴 Nicht am Sammeln';
-    btn.className = 'off';
-  }
+  const btn=document.getElementById('btn-collect');
+  if(isCollecting){btn.textContent='🟢 Am Sammeln';btn.className='on';}
+  else{btn.textContent='🔴 Nicht am Sammeln';btn.className='off';}
+  // Mobile Handle: Sammelmodus-Indikator
+  document.getElementById('mob-status-icon').textContent = isCollecting ? '🟢' : '☰';
 }
 
 async function toggleCollecting(){
-  if(!myToken) return;
-  const r = await api('vehicle_set_collecting', {token: myToken, collecting: !isCollecting});
-  if(r.error){ notify(r.error,'w'); return; }
-  isCollecting = r.collecting;
-  updateCollectingUI();
-  if(isCollecting) notify('🟢 Sammelmodus aktiviert – GPS wird aufgezeichnet','g');
-  else             notify('🔴 Sammelmodus deaktiviert – kein Tracking','w');
-}
-
-// ── Fahrzeug umbenennen ───────────────────────────────────────────────────────
-function toggleRename(){
-  const row = document.getElementById('rename-row');
-  const open = row.style.display === 'flex';
-  if(!open){
-    document.getElementById('rename-in').value = myName;
-    row.style.display = 'flex';
-    document.getElementById('rename-in').focus();
+  if(!myToken)return;
+  const r=await api('vehicle_set_collecting',{token:myToken,collecting:!isCollecting});
+  if(r.error){notify(r.error,'w');return;}
+  isCollecting=r.collecting; setMyStatus(r.status||'idle'); updateCollectingUI();
+  if(isCollecting){
+    notify('🟢 Sammelmodus aktiviert – GPS wird aufgezeichnet','g');
+    await requestNotificationPerm();
+    await requestWakeLock();
   } else {
-    row.style.display = 'none';
+    notify('🔴 Sammelmodus deaktiviert','w');
+    await releaseWakeLock();
   }
 }
+
+// ── Umbenennen ────────────────────────────────────────────────────────────────
+function toggleRename(){
+  const row=document.getElementById('rename-row');
+  if(row.style.display!=='flex'){document.getElementById('rename-in').value=myName;row.style.display='flex';document.getElementById('rename-in').focus();}
+  else row.style.display='none';
+}
 async function confirmRename(){
-  const name = document.getElementById('rename-in').value.trim();
-  if(!name){ notify('Name darf nicht leer sein','w'); return; }
-  if(!myToken) return;
-  const r = await api('vehicle_rename', {token: myToken, name});
-  if(r.error){ notify(r.error,'w'); return; }
-  myName = r.name;
-  localStorage.setItem('ps_name', myName);
-  document.getElementById('disp-vname').textContent = myName;
-  document.getElementById('rename-row').style.display = 'none';
-  notify(`✓ Umbenannt in "${myName}"`, 'g');
+  const name=document.getElementById('rename-in').value.trim();
+  if(!name||!myToken)return;
+  const r=await api('vehicle_rename',{token:myToken,name});
+  if(r.error){notify(r.error,'w');return;}
+  myName=r.name;localStorage.setItem('ps_name',myName);
+  document.getElementById('disp-vname').textContent=myName;
+  document.getElementById('rename-row').style.display='none';
+  notify(`✓ Umbenannt in "${myName}"','g`);
 }
-function cancelRename(){
-  document.getElementById('rename-row').style.display = 'none';
-}
-document.getElementById('rename-in').addEventListener('keydown', e=>{
-  if(e.key==='Enter') confirmRename();
-  if(e.key==='Escape') cancelRename();
-});
+function cancelRename(){document.getElementById('rename-row').style.display='none';}
+document.getElementById('rename-in').addEventListener('keydown',e=>{if(e.key==='Enter')confirmRename();if(e.key==='Escape')cancelRename();});
 
 // ── Polling ───────────────────────────────────────────────────────────────────
 let pollTimer=null;
 function startPolling(){if(pollTimer)clearInterval(pollTimer);pollState();pollTimer=setInterval(pollState,POLL_MS);}
 async function pollState(){
-  if(!currentColId) return;
-  const pd=document.getElementById('pd'); pd.classList.add('on');
+  if(!currentColId)return;
+  const pd=document.getElementById('pd');pd.classList.add('on');
   try{
     const data=await apiGet('state',{collection_id:currentColId});
-    if(data&&!data.error){ routes=data.routes||[]; vehicles=data.vehicles||[]; renderAll(); document.getElementById('pt').textContent='Live'; document.getElementById('no-coll').style.display=routes.length?'none':'block'; }
+    if(data&&!data.error){routes=data.routes||[];vehicles=data.vehicles||[];renderAll();document.getElementById('pt').textContent='Live';document.getElementById('no-coll').style.display=routes.length?'none':'block';}
   }catch(e){document.getElementById('pt').textContent='Fehler';}
+  maybeRefreshTracks();
   setTimeout(()=>pd.classList.remove('on'),400);
 }
 
-// ── Map-Buttons ───────────────────────────────────────────────────────────────
-function showMapBtns(){ document.getElementById('btn-locate').style.display='block'; document.getElementById('btn-fit-all').style.display='block'; }
-function setMyStatus(s){ const el=document.getElementById('disp-vs'); el.className=`vs ${s}`; el.textContent={idle:'Inaktiv',driving:'Fährt',paused:'Pausiert'}[s]||s; }
+function showMapBtns(){document.getElementById('btn-locate').style.display='block';document.getElementById('btn-fit-all').style.display='block';}
+function setMyStatus(s){const el=document.getElementById('disp-vs');el.className=`vs ${s}`;el.textContent={idle:'Inaktiv',driving:'Fährt',paused:'Pausiert'}[s]||s;}
 
 // ── GPS ───────────────────────────────────────────────────────────────────────
 let gpsInit=false;
@@ -516,146 +633,140 @@ function startGPS(){
   navigator.geolocation.watchPosition(
     pos=>{
       myLat=pos.coords.latitude; myLng=pos.coords.longitude;
+      // Geschwindigkeit: Browser liefert m/s (oder null)
+      const speedMs = pos.coords.speed; // kann null sein
+      mySpeed = speedMs;
+      const speedKmh = (speedMs != null && speedMs >= 0) ? speedMs * 3.6 : null;
+
       document.getElementById('gdot').className='gdot on';
-      document.getElementById('gps-txt').textContent=`${myLat.toFixed(5)}, ${myLng.toFixed(5)} ±${Math.round(pos.coords.accuracy)}m`;
-      if(isJoined) sendGPS(myLat,myLng);
+      let gpsText = `${myLat.toFixed(5)}, ${myLng.toFixed(5)} ±${Math.round(pos.coords.accuracy)}m`;
+      document.getElementById('gps-txt').textContent = gpsText;
+
+      // Geschwindigkeits-Badge
+      const badge = document.getElementById('speed-badge');
+      if (speedKmh !== null) {
+        badge.textContent = speedKmh.toFixed(1) + ' km/h';
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+
+      // Warnung wenn nicht am Sammeln aber in Bewegung
+      updateCollectingWarn(speedKmh ?? 0);
+
+      if(isJoined) sendGPS(myLat, myLng);
       if(!gpsInit){map.setView([myLat,myLng],15);gpsInit=true;}
     },
-    err=>{ document.getElementById('gdot').className='gdot err'; document.getElementById('gps-txt').textContent={1:'GPS verweigert',2:'Position n/a',3:'GPS Timeout'}[err.code]||err.message; },
+    err=>{document.getElementById('gdot').className='gdot err';document.getElementById('gps-txt').textContent={1:'GPS verweigert',2:'Position n/a',3:'GPS Timeout'}[err.code]||err.message;},
     {enableHighAccuracy:true,maximumAge:3000,timeout:15000}
   );
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderAll(){
-  renderRoutes();
-  renderRouteList();
-  updateVehicleSnaps();
-  renderVehicleMarkers();
-  renderVehicleList();
+  renderRoutes();renderRouteList();
+  updateVehicleSnaps();renderVehicleMarkers();renderVehicleList();
   updateStats();
   if(isJoined){
     const me=vehicles.find(v=>v.token===myToken);
     if(me){
       setMyStatus(me.status);
-      // Sammelmodus-Status vom Server synchronisieren
-      const serverCollecting = !!(me.collecting);
-      if(isCollecting !== serverCollecting){
-        isCollecting = serverCollecting;
-        updateCollectingUI();
-      }
+      const sc=!!(me.collecting);
+      if(isCollecting!==sc){isCollecting=sc;updateCollectingUI();}
     }
   }
 }
 
 function renderRoutes(){
   routes.forEach(route=>{
-    if(routeLayers[route.id]) routeLayers[route.id].forEach(l=>map.removeLayer(l));
+    if(routeLayers[route.id])routeLayers[route.id].forEach(l=>map.removeLayer(l));
     if(!isRouteVisible(route)){routeLayers[route.id]=[];return;}
-    const coords=route.coordinates, layers=[], driven=route.driven_segments||[];
-    if(route.status==='pending'){
-      layers.push(L.polyline(coords,{color:route.color,weight:3,opacity:0.5,dashArray:'6,5',lineCap:'round'}));
-    } else if(route.status==='completed'){
+    const coords=route.coordinates,layers=[],driven=route.driven_segments||[];
+    if(route.status==='completed'){
       layers.push(L.polyline(coords,{color:'#a8ff3e',weight:4,opacity:0.9,lineCap:'round'}));
-    } else if(route.status==='active'||route.status==='paused'){
-      const paused=route.status==='paused'; let i=0;
+    } else {
+      // Aktiv oder ausstehend – immer in Fahrmodus-Darstellung (rot/grün)
+      let i=0;
       while(i<coords.length-1){
-        const isDriven=driven[i]===true; const seg=[coords[i]]; let j=i;
+        const isDriven=driven[i]===true;const seg=[coords[i]];let j=i;
         while(j<coords.length-1&&(driven[j]===true)===isDriven){seg.push(coords[j+1]);j++;}
-        layers.push(L.polyline(seg,{color:isDriven?'#a8ff3e':'#ff4444',weight:isDriven?5:4,opacity:isDriven?1:0.9,dashArray:(!isDriven&&paused)?'8,5':null,lineCap:'round'}));
+        layers.push(L.polyline(seg,{color:isDriven?'#a8ff3e':'#ff4444',weight:isDriven?5:4,opacity:isDriven?1:0.9,lineCap:'round'}));
         i=j;
       }
     }
     const f=coords[0],la=coords[coords.length-1];
-    layers.push(L.circleMarker(f,{radius:6,fillColor:route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1}).bindTooltip('Start: '+route.name,{className:'rtt',direction:'right'}));
-    layers.push(L.circleMarker(la,{radius:6,fillColor:route.status==='completed'?'#a8ff3e':route.color,color:'#fff',weight:2,fillOpacity:1,opacity:1}).bindTooltip('Ziel: '+route.name,{className:'rtt',direction:'right'}));
+    layers.push(L.circleMarker(f,{radius:6,fillColor:route.color,color:'#fff',weight:2,fillOpacity:1}).bindTooltip('Start: '+route.name,{className:'rtt',direction:'right'}));
+    layers.push(L.circleMarker(la,{radius:6,fillColor:route.status==='completed'?'#a8ff3e':route.color,color:'#fff',weight:2,fillOpacity:1}).bindTooltip('Ziel: '+route.name,{className:'rtt',direction:'right'}));
     layers.forEach(l=>l.addTo(map));
-    if(layers[0]) layers[0].bindTooltip(`<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,{permanent:false,direction:'top',className:'rtt'});
+    if(layers[0])layers[0].bindTooltip(`<b>${route.name}</b><br>${slabel(route.status)} – ${route.progress}%`,{permanent:false,direction:'top',className:'rtt'});
     routeLayers[route.id]=layers;
   });
 }
 
-function makeVehicleIcon(col, sz, self){
-  return L.divIcon({className:'',html:`<div style="width:${sz}px;height:${sz}px;background:${col};border:2px solid ${self?'#fff':'rgba(255,255,255,.7)'};border-radius:50%;box-shadow:0 0 ${self?12:6}px ${col}"></div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
+function makeVehicleIcon(col,sz,self,speedKmh){
+  // Geschwindigkeit als Zahl im Marker wenn > 5 km/h
+  const speedTxt = (speedKmh != null && speedKmh > 5) ? `<div style="position:absolute;top:${sz}px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(10,12,15,.85);color:${col};font-size:9px;font-family:'JetBrains Mono',monospace;padding:1px 4px;border-radius:2px;margin-top:2px">${speedKmh.toFixed(0)}km/h</div>` : '';
+  return L.divIcon({
+    className:'',
+    html:`<div style="position:relative"><div style="width:${sz}px;height:${sz}px;background:${col};border:2px solid ${self?'#fff':'rgba(255,255,255,.7)'};border-radius:50%;box-shadow:0 0 ${self?12:6}px ${col}"></div>${speedTxt}</div>`,
+    iconSize:[sz,sz+16],iconAnchor:[sz/2,sz/2]
+  });
 }
 
 function renderVehicleMarkers(){
   const ids=new Set(vehicles.map(v=>v.token));
-  Object.keys(vehicleMarkers).forEach(id=>{
-    if(!ids.has(id)){map.removeLayer(vehicleMarkers[id]);delete vehicleMarkers[id];delete vehicleMarkerProps[id];}
-  });
+  Object.keys(vehicleMarkers).forEach(id=>{if(!ids.has(id)){map.removeLayer(vehicleMarkers[id]);delete vehicleMarkers[id];delete vehicleMarkerProps[id];}});
   vehicles.forEach(v=>{
-    if(v.lat===null||v.lng===null) return;
+    if(v.lat===null||v.lng===null)return;
     const self=v.token===myToken;
-    if(!isVehicleVisible(v)){
-      if(vehicleMarkers[v.token]){map.removeLayer(vehicleMarkers[v.token]);delete vehicleMarkers[v.token];delete vehicleMarkerProps[v.token];}
-      return;
-    }
+    if(!isVehicleVisible(v)){if(vehicleMarkers[v.token]){map.removeLayer(vehicleMarkers[v.token]);delete vehicleMarkers[v.token];delete vehicleMarkerProps[v.token];}return;}
     const snap=vehicleSnap[v.token];
     const snapFresh=!self&&snap&&Math.abs(snap.srcLat-v.lat)<SNAP_THRESHOLD&&Math.abs(snap.srcLng-v.lng)<SNAP_THRESHOLD;
-    const dLat=snapFresh?snap.lat:v.lat, dLng=snapFresh?snap.lng:v.lng;
-    // Farbe: eigenes Fahrzeug=gold, paused=orange, nicht-sammelnd=gedimmt, sammelnd=accent
+    const dLat=snapFresh?snap.lat:v.lat,dLng=snapFresh?snap.lng:v.lng;
     const collecting=!!(v.collecting);
     const col=self?'#ffd700':v.status==='paused'?'#ff6b35':collecting?'#00d4ff':'#4a5a6a';
     const sz=self?18:12;
+    // Geschwindigkeit für eigenes Fahrzeug anzeigen
+    const spd = self && mySpeed != null ? mySpeed * 3.6 : null;
+    const propKey = col+'|'+sz+'|'+(spd!=null?Math.round(spd/5):0);
 
     if(vehicleMarkers[v.token]){
       const prev=vehicleMarkerProps[v.token];
-      if(!prev||prev.col!==col||prev.sz!==sz){
-        vehicleMarkers[v.token].setIcon(makeVehicleIcon(col,sz,self));
-        vehicleMarkerProps[v.token]={col,sz};
-        requestAnimationFrame(()=>{ const el=vehicleMarkers[v.token]?.getElement(); if(el) el.classList.add('animated'); });
-      }
-      const el=vehicleMarkers[v.token].getElement();
-      if(el&&!el.classList.contains('animated')) el.classList.add('animated');
+      if(!prev||prev.key!==propKey){vehicleMarkers[v.token].setIcon(makeVehicleIcon(col,sz,self,spd));vehicleMarkerProps[v.token]={key:propKey};requestAnimationFrame(()=>{const el=vehicleMarkers[v.token]?.getElement();if(el)el.classList.add('animated');});}
+      const el=vehicleMarkers[v.token].getElement();if(el&&!el.classList.contains('animated'))el.classList.add('animated');
       vehicleMarkers[v.token].setLatLng([dLat,dLng]);
-      vehicleMarkers[v.token].getTooltip()?.setContent(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}${collecting?' 🟢':' ○'}`);
+      vehicleMarkers[v.token].getTooltip()?.setContent(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}${collecting?' 🟢':' ○'}${spd!=null?' · '+spd.toFixed(0)+'km/h':''}`);
     } else {
-      const marker=L.marker([dLat,dLng],{icon:makeVehicleIcon(col,sz,self),zIndexOffset:self?1000:0}).addTo(map)
+      const marker=L.marker([dLat,dLng],{icon:makeVehicleIcon(col,sz,self,spd),zIndexOffset:self?1000:0}).addTo(map)
         .bindTooltip(`<b>${v.name}</b>${self?' (Ich)':''}<br>${slabel(v.status)}${collecting?' 🟢':' ○'}`,{permanent:self,direction:'top',offset:[0,-(sz/2+4)],className:'rtt'});
-      vehicleMarkers[v.token]=marker;
-      vehicleMarkerProps[v.token]={col,sz};
+      vehicleMarkers[v.token]=marker;vehicleMarkerProps[v.token]={key:propKey};
       setTimeout(()=>{const el=marker.getElement();if(el)el.classList.add('animated');},200);
     }
   });
 }
 
 function renderRouteList(){
-  const c=document.getElementById('route-list'); c.innerHTML='';
+  const c=document.getElementById('route-list');c.innerHTML='';
   if(!routes.length){c.innerHTML='<p style="color:var(--muted);font-size:11px;font-family:var(--font-mono);padding:4px 6px">Keine Routen</p>';return;}
   routes.forEach(route=>{
-    const isMe=route.assigned_token===myToken, av=vehicles.find(v=>v.token===route.assigned_token);
+    const av=vehicles.find(v=>v.token===route.assigned_token);
     const visible=isRouteVisible(route);
     const card=document.createElement('div');
     card.className='rc'+(visible?'':' r-hidden');
-    card.style.setProperty('--rc',route.status==='completed'?'#a8ff3e':route.status==='active'||route.status==='paused'?'#ff4444':route.color);
+    card.style.setProperty('--rc',route.status==='completed'?'#a8ff3e':'#ff4444');
+    // Nur Reset-Button (Admin) und Sichtbarkeit/Fokus
     let acts=`<button class="btn s btn-foc">🔍</button><button class="btn s btn-vis">${visible?'👁':'🚫'}</button>`;
-    if(isJoined&&route.status==='pending') acts+=`<button class="btn s g btn-start">▶ Start</button>`;
-    if(isJoined&&isMe&&route.status==='active') acts+=`<button class="btn s d btn-pause">⏸</button><button class="btn s g btn-done">✓</button>`;
-    if(isJoined&&isMe&&route.status==='paused') acts+=`<button class="btn s g btn-resume">▶</button><button class="btn s g btn-done">✓</button>`;
-    if(IS_ADMIN&&(route.status==='completed'||route.status==='paused')) acts+=`<button class="btn s btn-reset">↺</button>`;
+    if(IS_ADMIN&&route.status!=='active') acts+=`<button class="btn s btn-reset">↺ Reset</button>`;
+    if(IS_ADMIN&&route.status==='active') acts+=`<button class="btn s btn-reset">↺</button>`;
     card.innerHTML=`
       <div class="rt"><span class="rn" style="color:${route.color}" title="${route.name}">${route.name}</span><span class="rb ${route.status}">${slabel(route.status)}</span></div>
       <div class="pb"><div class="pf" style="width:${route.progress}%;background:#a8ff3e"></div></div>
       <div class="rm">${route.coordinates.length} Pkt · ${av?'🚛 '+av.name:'—'} · ${route.progress}%</div>
       <div class="ra">${acts}</div>`;
     c.appendChild(card);
-    card.querySelector('.btn-foc')?.addEventListener('click',()=>{ if(route.coordinates.length) map.fitBounds(L.latLngBounds(route.coordinates),{padding:[40,40]}); });
+    card.querySelector('.btn-foc')?.addEventListener('click',()=>{if(route.coordinates.length)map.fitBounds(L.latLngBounds(route.coordinates),{padding:[40,40]});});
     card.querySelector('.btn-vis')?.addEventListener('click',()=>toggleRouteLocal(route.id));
-    card.querySelector('.btn-start')?.addEventListener('click',async()=>{
-      if(!isJoined){notify('Nicht verbunden','w');return;}
-      if(!isCollecting){
-        // Warnung: Sammelmodus inaktiv – Route starten erlaubt, aber kein Tracking
-        notify('⚠ Sammelmodus inaktiv – aktiviere ihn für GPS-Aufzeichnung','w');
-      }
-      const r=await api('route_start',{token:myToken,route_id:route.id});
-      if(r.error){notify(r.error,'w');return;}
-      setMyStatus('driving'); pollState(); await requestWakeLock();
-    });
-    card.querySelector('.btn-pause')?.addEventListener('click',async()=>{ await api('route_pause',{token:myToken,route_id:route.id}); setMyStatus('paused'); pollState(); });
-    card.querySelector('.btn-resume')?.addEventListener('click',async()=>{ await api('route_resume',{token:myToken,route_id:route.id}); setMyStatus('driving'); pollState(); await requestWakeLock(); });
-    card.querySelector('.btn-done')?.addEventListener('click',async()=>{ await api('route_complete',{token:myToken,route_id:route.id}); setMyStatus('idle'); notify(`${route.name} erledigt ✓`,'g'); pollState(); await releaseWakeLock(); });
-    card.querySelector('.btn-reset')?.addEventListener('click',async()=>{ if(confirm(`${route.name} zurücksetzen?`)){await api('route_reset',{route_id:route.id});pollState();} });
+    card.querySelector('.btn-reset')?.addEventListener('click',async()=>{if(confirm(`${route.name} zurücksetzen?`)){await api('route_reset',{route_id:route.id});pollState();}});
   });
 }
 
@@ -664,22 +775,24 @@ function renderVehicleList(){
   const rm=Object.fromEntries(routes.map(r=>[r.id,r.name]));
   if(!vehicles.length){c.innerHTML='<div style="padding:8px 14px;color:var(--muted);font-size:11px;font-family:var(--font-mono)">Keine Fahrzeuge</div>';return;}
   c.innerHTML=vehicles.map(v=>{
-    const self=v.token===myToken, vis=isVehicleVisible(v);
-    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':v.status==='idle'?'var(--muted)':v.collecting?'#00d4ff':'#4a5a6a';
-    const collectBadge=v.collecting?'<span style="font-size:9px;color:var(--green);font-family:var(--font-mono);margin-left:3px">●SAM</span>':'';
-    return `<div class="vi${vis?'':' v-hidden'}" onclick="toggleVehicle('${v.token}')">
-      <div class="vd ${v.status}" style="background:${col}"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.name}${self?' <small style="color:var(--accent)">(Ich)</small>':''}${collectBadge}</div>
+    const self=v.token===myToken,vis=isVehicleVisible(v);
+    const collecting=!!(v.collecting);
+    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':v.status==='idle'?'var(--muted)':collecting?'#00d4ff':'#4a5a6a';
+    const trackOn=trackVisible[v.token]||false;
+    return `<div class="vi${vis?'':' v-hidden'}">
+      <div class="vd" style="background:${col}"></div>
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="toggleVehicle('${v.token}')">
+        <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.name}${self?' <small style="color:var(--accent)">(Ich)</small>':''}${collecting?' <span style="color:var(--green);font-size:9px">●SAM</span>':''}</div>
         <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">${v.active_route_id?(rm[v.active_route_id]||'—'):'—'}</div>
       </div>
-      <span class="vi-eye">${vis?'👁':'○'}</span>
+      <span class="vi-track${trackOn?' on':''}" onclick="toggleTrack('${v.token}')" title="Fahrspur ein/aus">🛣</span>
+      <span class="vi-eye" onclick="toggleVehicle('${v.token}')">${vis?'👁':'○'}</span>
     </div>`;
   }).join('');
   updateVehBulkBtns();
 }
 
-function updateStats(){ document.getElementById('sv').textContent=vehicles.length; document.getElementById('sa').textContent=routes.filter(r=>r.status==='active').length; document.getElementById('sd').textContent=routes.filter(r=>r.status==='completed').length; }
+function updateStats(){document.getElementById('sv').textContent=vehicles.length;document.getElementById('sa').textContent=routes.filter(r=>r.status==='active').length;document.getElementById('sd').textContent=routes.filter(r=>r.status==='completed').length;}
 function slabel(s){return{pending:'Ausstehend',active:'Aktiv',completed:'Erledigt',paused:'Pausiert',idle:'Inaktiv',driving:'Fährt',offline:'Offline',draft:'Entwurf'}[s]||s;}
 function notify(msg,type=''){const el=document.createElement('div');el.className='notif '+(type||'');el.textContent=msg;document.getElementById('notifs').appendChild(el);setTimeout(()=>el.remove(),3500);}
 
