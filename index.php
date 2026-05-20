@@ -18,6 +18,7 @@ $username = me_name();
 <link rel="manifest" href="manifest.json">
 <title>Papiersammlung</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep.js/0.12.0/NoSleep.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -318,6 +319,12 @@ let isJoined     = false;
 let isCollecting = false;
 let currentColId = null;
 let myLat = null, myLng = null, mySpeed = null, wakeLock = null;
+
+// iOS-Erkennung: alle Browser auf iOS nutzen WebKit → kein echter Hintergrund möglich.
+// Workaround: NoSleep.js verhindert Bildschirm-Dunkel, GPS läuft bei offener App weiter.
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+           || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const noSleep = (typeof NoSleep !== 'undefined') ? new NoSleep() : null;
 let routes = [], vehicles = [];
 const routeLayers = {}, vehicleMarkers = {}, vehicleMarkerProps = {};
 
@@ -541,10 +548,31 @@ document.getElementById('btn-fit-all').addEventListener('click',()=>{
 
 // ── Wake Lock ─────────────────────────────────────────────────────────────────
 async function requestWakeLock(){
-  if(!('wakeLock' in navigator))return;
-  try{wakeLock=await navigator.wakeLock.request('screen');document.getElementById('wake-banner').style.display='flex';wakeLock.addEventListener('release',()=>{document.getElementById('wake-banner').style.display='none';wakeLock=null;});}catch(e){}
+  let bannerText = '📍 GPS aktiv – Bildschirm bleibt an';
+  // Standard WakeLock API (Android Chrome, Edge, Samsung Internet, Ecosia…)
+  if('wakeLock' in navigator){
+    try{
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release',()=>{ wakeLock=null; _hideBanner(); });
+    }catch(e){}
+  }
+  // iOS-Fallback: NoSleep.js spielt stummes Video → verhindert Bildschirm-Dunkel
+  // GPS läuft dann so lange weiter wie die App sichtbar ist
+  if(noSleep && !noSleep.isEnabled){
+    try{ await noSleep.enable(); }catch(e){}
+  }
+  if(wakeLock || (noSleep?.isEnabled)){
+    if(isIOS) bannerText = '📱 iOS: App offen lassen – GPS läuft, Bildschirm aktiv';
+    document.getElementById('wake-banner').textContent = bannerText;
+    document.getElementById('wake-banner').style.display='flex';
+  }
 }
-async function releaseWakeLock(){if(wakeLock){await wakeLock.release();wakeLock=null;}document.getElementById('wake-banner').style.display='none';}
+function _hideBanner(){ document.getElementById('wake-banner').style.display='none'; }
+async function releaseWakeLock(){
+  if(wakeLock){ try{ await wakeLock.release(); }catch(e){} wakeLock=null; }
+  if(noSleep?.isEnabled) noSleep.disable();
+  _hideBanner();
+}
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(action,body={}){
@@ -621,6 +649,7 @@ async function toggleCollecting(){
   isCollecting=r.collecting; setMyStatus(r.status||'idle'); updateCollectingUI();
   if(isCollecting){
     notify('🟢 Sammelmodus aktiviert – GPS wird aufgezeichnet','g');
+    if(isIOS) notify('📱 iOS: App bitte geöffnet lassen. Hintergrund-GPS nicht möglich.','w');
     await requestNotificationPerm();
     await requestWakeLock();
   } else {
