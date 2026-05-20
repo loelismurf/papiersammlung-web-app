@@ -548,24 +548,22 @@ document.getElementById('btn-fit-all').addEventListener('click',()=>{
 
 // ── Wake Lock ─────────────────────────────────────────────────────────────────
 async function requestWakeLock(){
-  let bannerText = '📍 GPS aktiv – Bildschirm bleibt an';
-  // Standard WakeLock API (Android Chrome, Edge, Samsung Internet, Ecosia…)
+  // WakeLock API: braucht keine User-Geste (nur sichtbares Dokument)
   if('wakeLock' in navigator){
     try{
       wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release',()=>{ wakeLock=null; _hideBanner(); });
+      wakeLock.addEventListener('release',()=>{ wakeLock=null; _updateBanner(); });
     }catch(e){}
   }
-  // iOS-Fallback: NoSleep.js spielt stummes Video → verhindert Bildschirm-Dunkel
-  // GPS läuft dann so lange weiter wie die App sichtbar ist
-  if(noSleep && !noSleep.isEnabled){
-    try{ await noSleep.enable(); }catch(e){}
-  }
-  if(wakeLock || (noSleep?.isEnabled)){
-    if(isIOS) bannerText = '📱 iOS: App offen lassen – GPS läuft, Bildschirm aktiv';
-    document.getElementById('wake-banner').textContent = bannerText;
-    document.getElementById('wake-banner').style.display='flex';
-  }
+  _updateBanner();
+}
+function _updateBanner(){
+  const active = wakeLock || (noSleep?.isEnabled);
+  if(!active){ _hideBanner(); return; }
+  document.getElementById('wake-banner').textContent = isIOS && noSleep?.isEnabled
+    ? '📱 iOS: App offen lassen – GPS läuft, Bildschirm aktiv'
+    : '📍 GPS aktiv – Bildschirm bleibt an';
+  document.getElementById('wake-banner').style.display='flex';
 }
 function _hideBanner(){ document.getElementById('wake-banner').style.display='none'; }
 async function releaseWakeLock(){
@@ -652,6 +650,11 @@ async function toggleCollecting(){
     if(isIOS) notify('📱 iOS: App bitte geöffnet lassen. Hintergrund-GPS nicht möglich.','w');
     await requestNotificationPerm();
     await requestWakeLock();
+    // NoSleep HIER aktivieren: direkt im Tap-Handler = User-Geste vorhanden
+    // (Video-Autoplay braucht zwingend eine User-Geste, sonst blockt der Browser)
+    if(noSleep && !noSleep.isEnabled){
+      try{ await noSleep.enable(); _updateBanner(); }catch(e){}
+    }
   } else {
     notify('🔴 Sammelmodus deaktiviert','w');
     stopBgPageTimer();

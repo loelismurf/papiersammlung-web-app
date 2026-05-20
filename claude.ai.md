@@ -18,6 +18,7 @@ Tech-Stack (unveraenderlich)
 - GPS: Browser Geolocation API (liefert auch speed in m/s) / OSRM fuer Strassensnapping
 - PWA: Service Worker (sw.js) + manifest.json
 - Design: Dunkles Theme (#0a0c0f, Akzent #00d4ff) / Rajdhani + JetBrains Mono
+- NoSleep.js (cdnjs, 0.12.0): verhindert Bildschirm-Dunkel auf iOS
 
 ---
 
@@ -105,27 +106,45 @@ route_toggle            - Admin: Sichtbarkeit umschalten
 
 ---
 
-Background-GPS (sw.js)
+Background-GPS (sw.js + index.php) - 3-Schichten-Architektur
 
-Mechanismus:
-  Wenn App in Hintergrund geht (visibilitychange='hidden') AND collecting=1:
-    -> SW erhaelt BG_START Nachricht
-    -> SW zeigt persistente Notification (haelt Chrome-Prozess am Leben auf Android)
-    -> SW startet setInterval(5000) und sendet REQUEST_GPS an alle Clients
-    -> Client-watchPosition antwortet mit GPS-Daten
-    -> SW sendet GPS via GPS_UPDATE an API (keepalive:true)
-  Wenn App wieder im Vordergrund (visibilitychange='visible'):
-    -> SW erhaelt BG_STOP
-    -> Notification wird geschlossen, Timer gestoppt
+Schicht 1: fetch(..., keepalive:true)
+  Laeuft auch nach Tab-Wechsel weiter. Unterstuetzt in ALLEN modernen Browsern
+  (Chrome, Samsung Internet, Ecosia, Edge, Brave, Opera, Firefox).
+  sendGPS() verwendet immer keepalive:true, unabhaengig von Sichtbarkeit.
 
-SW Message Types:
-  BG_START     <- index.php sendet wenn App in HG geht + collecting=1
-  BG_STOP      <- index.php sendet wenn App wieder im VG
-  GPS_UPDATE   <- index.php sendet letzten GPS-Stand an SW (fuer BG-Modus)
-  REQUEST_GPS  -> SW sendet an Client (fordert GPS-Update an)
+Schicht 2: bgPageTimer (setInterval im Hauptthread, alle 6s)
+  Startet wenn App in HG geht (visibilitychange='hidden') UND collecting=1.
+  Feuert sendGPS() wenn watchPosition seit >8s keine Daten geliefert hat.
+  Laeuft auf Android auch im Hintergrund-Tab weiter.
+  Variable: bgPageTimer, lastGpsSentAt
 
-iOS Safari: kein Background-Support moeglich (Platform-Einschraenkung, Notification zeigt Hinweis)
-Android Chrome PWA: funktioniert mit Notification-Berechtigung
+Schicht 3: SW-Notification (sw.js)
+  SW zeigt persistente Notification -> haelt Browser-Prozess am Leben (Android).
+  SW-interne setInterval als weiterer Fallback (REQUEST_GPS -> Client).
+  SW Message Types:
+    BG_START   <- index.php wenn App in HG + collecting=1
+    BG_STOP    <- index.php wenn App wieder im VG
+    GPS_UPDATE <- index.php: letzter GPS-Stand fuer SW-Fallback
+    REQUEST_GPS -> SW an Client
+
+Browser-Kompatibilitaet:
+  Android Chrome, Samsung Internet, Ecosia, Edge, Brave, Opera: alle 3 Schichten
+  Firefox Android: Schicht 1+2 (SW-Notification variiert)
+  iOS Safari/Chrome/Ecosia: kein Hintergrund moeglich (WebKit-Einschraenkung)
+
+iOS-Workaround: NoSleep.js
+  Verhindert Bildschirm-Dunkel auf iOS via stilles Video-Loop.
+  WICHTIG: noSleep.enable() NUR aus User-Geste aufrufen (z.B. toggleCollecting()).
+  NIEMALS aus autoJoin(), loadCollections() oder anderen Auto-Funktionen aufrufen!
+  Grund: Video-Autoplay braucht zwingend eine User-Geste, sonst blockiert Browser.
+  noSleep.enable() wird aufgerufen in: toggleCollecting() wenn collecting=true
+  noSleep.disable() wird aufgerufen in: releaseWakeLock()
+  WakeLock API (Android) braucht keine User-Geste und bleibt in requestWakeLock().
+
+isIOS-Erkennung:
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+             || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 ---
 
@@ -133,8 +152,8 @@ Fahrspur (vehicle_tracks)
 
 - Jeder GPS-Punkt bei collecting=1 wird in vehicle_tracks gespeichert (inkl. speed m/s)
 - API: vehicle_track GET {token, collection_id} -> letzte 800 Punkte als [[lat,lng],...]
-- Index.php: 🛣 Button pro Fahrzeug in der Fahrzeugliste toggelt Fahrspur
-- Fahrspur = gestrichelte Polyline in Fahrzeugfarbe, wird alle ~10s automatisch aktualisiert
+- Index.php: Schaltflaeche pro Fahrzeug in der Fahrzeugliste toggelt Fahrspur
+- Fahrspur = gestrichelte Polyline in Fahrzeugfarbe, wird alle ~10s aktualisiert
 - Tracks werden beim Loeschen einer Collection mitgeloescht
 
 ---
@@ -144,25 +163,40 @@ Geschwindigkeitsanzeige
 - GPS-Position liefert coords.speed (m/s, kann null sein)
 - Angezeigt im GPS-Bar als "X.X km/h" Badge
 - Im Fahrzeug-Marker: speed > 5 km/h -> kleine Zahl unter dem Marker-Kreis
-- Im Tooltip des Markers: Geschwindigkeit wenn verfuegbar
+- Im Tooltip: Geschwindigkeit wenn verfuegbar
+
+---
+
+Fahrzeug-Marker-Animation
+
+- CSS-Klasse 'animated' auf .leaflet-marker-icon: transition:transform 2200ms linear
+- Sprung >100m: 'animated' kurz entfernen -> Position setzen -> 'animated' wieder hinzufuegen
+- Funktion distM(lat1,lng1,lat2,lng2): Haversine-Distanz in Metern (JS-seitig)
+- Verhindert dass GPS-Spruenge (z.B. nach Tunnels) animiert werden
 
 ---
 
 Nicht-Sammeln-Warnung
 
 - Wenn Geschwindigkeit > 2 km/h UND collecting=0:
-  -> Oranges Banner auf der Karte: "⚠ Nicht am Sammeln! Antippen zum Aktivieren."
-- Antippen: oeffnet Sidebar (falls Mobile-kollabiert) + aktiviert Sammelmodus
+  -> Oranges blinkendes Banner auf der Karte
+- Antippen: oeffnet Sidebar (falls Mobile-kollabiert) + aktiviert Sammelmodus direkt
 
 ---
 
-Mobile Sidebar (Bugfix v5)
+Benachrichtigungen (notify)
 
-- Handle-Leiste (44px) ist immer als erstes Kind von #sidebar, AUSSERHALB von #sidebar-inner
-- Beim Kollabieren (height:44px): Handle bleibt sichtbar, sidebar-inner verschwindet
-- Floating-Button #mob-open-btn auf der Karte wird eingeblendet wenn kollabiert
-  -> Immer erreichbar, auch wenn Handle durch Daumen verdeckt
-- Handle zeigt Sammelmodus-Indikator: 🟢 wenn sammeln, ☰ sonst
+- Anzeigedauer: 7000ms (7 Sekunden)
+- Typen: '' (accent/blau), 'g' (gruen), 'w' (orange/Warnung)
+
+---
+
+Mobile Sidebar
+
+- Handle-Leiste (44px) ist als erstes Kind von #sidebar, AUSSERHALB von #sidebar-inner
+- Beim Kollabieren (height:44px): Handle sichtbar, sidebar-inner versteckt
+- Floating-Button #mob-open-btn auf der Karte erscheint wenn kollabiert
+- Handle zeigt Sammelmodus-Indikator: Emoji 'grüner Kreis' wenn sammeln, Hamburger sonst
 
 ---
 
@@ -210,13 +244,15 @@ Netcup Shared Hosting
 
 Bekannte Bugs (gefixt, nicht nochmal einbauen)
 
-Segmente rot bleiben    | driven_segments fehlte      | ensure_driven_segments_column()
-Kurven nicht erkannt    | Lineare Interpolation        | project_onto_route()
-Snap nicht gesendet     | Threshold zu klein           | 0.002 deg Threshold
-Falsches Koordinatenformat | OSRM [lng,lat]            | Umwandlung in admin.php
-Mehrere Fahrzeuge/User  | Token-basierter Join         | vehicle_join by user_id
-Luecken auf Geraden     | GPS-Ausreisser               | fill_small_gaps()
-Mobile Sidebar kein Aufklappen | Handle im Scroll-Container | Handle ausserhalb + Floating-Button
+Segmente rot bleiben         | driven_segments fehlte           | ensure_driven_segments_column()
+Kurven nicht erkannt         | Lineare Interpolation            | project_onto_route()
+Snap nicht gesendet          | Threshold zu klein               | 0.002 deg Threshold
+Falsches Koordinatenformat   | OSRM [lng,lat]                   | Umwandlung in admin.php
+Mehrere Fahrzeuge/User       | Token-basierter Join             | vehicle_join by user_id
+Luecken auf Geraden          | GPS-Ausreisser                   | fill_small_gaps()
+Mobile Sidebar kein Aufklappen | Handle im Scroll-Container    | Handle ausserhalb + Floating-Button
+Sprunganimation bei GPS-Sprung | immer animiert                 | distM() Pruefung >100m -> kein animated
+Browser blockiert Permission   | noSleep.enable() ohne Geste    | NUR in toggleCollecting() aufrufen
 
 ---
 
