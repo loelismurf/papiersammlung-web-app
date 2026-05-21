@@ -7,7 +7,7 @@
     android:background="#0a0c0f">
 
     <!-- ════════════════════════════════════════════════════════════════════ -->
-    <!-- KARTE — füllt den gesamten Hintergrund                              -->
+    <!-- KARTE                                                               -->
     <!-- ════════════════════════════════════════════════════════════════════ -->
     <org.osmdroid.views.MapView
         android:id="@+id/map"
@@ -19,7 +19,7 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- ════════════════════════════════════════════════════════════════════ -->
-    <!-- SIDEBAR — Overlay über der Karte                                    -->
+    <!-- SIDEBAR                                                             -->
     <!-- ════════════════════════════════════════════════════════════════════ -->
     <ScrollView
         android:id="@+id/sidebar"
@@ -86,7 +86,7 @@
 
             </LinearLayout>
 
-            <!-- ── Fahrzeug-Name ─────────────────────────────────── -->
+            <!-- ── Fahrzeug-Name ──────────────────────────────────── -->
             <TextView
                 android:id="@+id/tv_vehicle_name"
                 android:layout_width="match_parent"
@@ -96,7 +96,7 @@
                 android:fontFamily="sans-serif-medium"
                 android:layout_marginBottom="2dp" />
 
-            <!-- ── Status / GPS-Koords ─────────────────────────── -->
+            <!-- ── Status / GPS-Koords ──────────────────────── -->
             <TextView
                 android:id="@+id/tv_status"
                 android:layout_width="match_parent"
@@ -118,7 +118,7 @@
                 android:visibility="gone"
                 android:layout_marginBottom="10dp" />
 
-            <!-- ── Sammel-Button ─────────────────────────────────── -->
+            <!-- ── Sammel-Button ──────────────────────────────────── -->
             <Button
                 android:id="@+id/btn_collect"
                 android:layout_width="match_parent"
@@ -245,8 +245,7 @@
         android:layout_marginTop="8dp" />
 
     <!-- ════════════════════════════════════════════════════════════════════ -->
-    <!-- FOLLOW-BUTTON — IMMER sichtbar. Farbton zeigt followMode-Status.    -->
-    <!-- Vorher: visibility="gone" → erst nach Map-Drag klickbar. Buggy.     -->
+    <!-- FOLLOW-BUTTON                                                        -->
     <!-- ════════════════════════════════════════════════════════════════════ -->
     <ImageButton
         android:id="@+id/btn_follow"
@@ -257,6 +256,23 @@
         android:tint="#00d4ff"
         android:elevation="6dp"
         android:contentDescription="Auf Position zentrieren"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginEnd="14dp"
+        android:layout_marginBottom="90dp" />
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- TRACK-TOGGLE BUTTON — Fahrspur anzeigen/verbergen                   -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <ImageButton
+        android:id="@+id/btn_toggle_track"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:src="@android:drawable/ic_menu_mapmode"
+        android:background="#E60f1216"
+        android:tint="#7a9ab0"
+        android:elevation="6dp"
+        android:contentDescription="Fahrspur anzeigen"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginEnd="14dp"

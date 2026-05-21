@@ -18,6 +18,7 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -32,44 +33,13 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 
 /**
- * Hauptaktivität.
+ * Hauptaktivität v5.6 — mit Custom Markers und Vehicle Track History
  *
- * BUGFIX v5.5 — GPS- und Karten-Pipeline komplett überarbeitet
- * ──────────────────────────────────────────────────────────────────────────
- *  PROBLEMA in v5.4:
- *   - "Standort wird nicht angezeigt": MainActivity hat ausschließlich auf
- *     einen Broadcast aus GpsService gehört. Auf Android 14 (targetSdk 34)
- *     werden implizite Broadcasts an `RECEIVER_NOT_EXPORTED`-Empfänger
- *     unzuverlässig zugestellt, wenn der Sender kein `setPackage()` setzt
- *     → Activity bekam nie ein Update.
- *   - "Karte zentriert nicht beim GPS-Button": Der Button hatte
- *     `visibility="gone"` und wurde erst sichtbar, wenn der User die Karte
- *     mit dem Finger verschob. Click-Handler hat zudem `selfMarker?.position`
- *     verwendet — ohne vorigen GPS-Fix war das `null` und es passierte nichts.
- *   - "Fahrzeug fehlt": `selfMarker` wurde erst in `onGpsUpdate()` erstellt.
- *     Ohne Broadcast wurde der Marker nie erzeugt.
- *   - "Koordinaten beim Fahrzeug fehlen": Sidebar und Marker-Snippet
- *     enthielten keine Lat/Lng-Werte.
- *   - Polylines wurden alle 2.5s neu hinzugefügt und überdeckten den
- *     Selbst-Marker.
- *
- *  FIX:
- *   1. MainActivity registriert EIGENEN `LocationListener` direkt am
- *      `LocationManager` (foreground-only). Damit ist die Karte unabhängig
- *      vom Service-Broadcast.
- *   2. `getLastKnownLocation()` liefert sofort eine Anfangsposition; Karte
- *      und Marker erscheinen unmittelbar nach Start.
- *   3. `btn_follow` ist immer sichtbar; Farbe zeigt den followMode-Status an.
- *      Klick zentriert auf aktuelle Position; wenn kein Fix vorhanden →
- *      Toast „Warte auf GPS-Fix".
- *   4. Touch-Listener deaktiviert followMode nur bei `ACTION_MOVE`, nicht
- *      bei jedem Tap.
- *   5. Eigene + fremde Fahrzeuge zeigen GPS-Koordinaten in der Sidebar und
- *      im Marker-Snippet.
- *   6. Nach jedem Render-Cycle werden Marker an die Spitze der Overlay-
- *      Liste gehoben, damit sie nicht von Polylines überdeckt werden.
- *   7. Broadcast-Receiver bleibt als ZUSÄTZLICHER Fallback (debounced, damit
- *      keine Doppel-Updates kommen).
+ * Neu in v5.6:
+ *  - Eigener Marker: blauer Punkt mit Pfeil (Google Maps Style) statt grüner Bubble
+ *  - Fahrzeugrouten werden auf dem Server gespeichert und können auf der Karte
+ *    angezeigt werden (optional via Toggle)
+ *  - Fahrspur wird alle 5 Sekunden aktualisiert
  */
 class MainActivity : AppCompatActivity() {
 
@@ -88,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvBuffered: TextView
     private lateinit var btnFollow: ImageButton
     private lateinit var tvCollectionStatus: TextView
+    private lateinit var btnToggleTrack: ImageButton
 
     // ── System Services ───────────────────────────────────────────────────────
     private lateinit var locationManager: LocationManager
@@ -96,28 +67,27 @@ class MainActivity : AppCompatActivity() {
     private var selfMarker: Marker? = null
     private val vehicleMarkers = mutableMapOf<String, Marker>()
     private val routePolylines = mutableMapOf<String, Polyline>()
+    private val trackPolylines = mutableMapOf<String, Polyline>()
     private var followMode    = true
     private var firstGpsFix   = true
     private var sidebarVisible = true
+    private var showVehicleTrack = false
 
     // ── State ─────────────────────────────────────────────────────────────────
     private var collections = listOf<JSONObject>()
     private var routes      = listOf<JSONObject>()
     private var vehicles    = listOf<JSONObject>()
     private var pollJob: Job? = null
+    private var trackJob: Job? = null
     private var offlineBuffer: OfflineBuffer? = null
     private var isJoining = false
 
-    // Aktuelle eigene GPS-Position (lokal, ohne Server-Roundtrip)
+    // Aktuelle eigene GPS-Position
     private var myLat: Double = 0.0
     private var myLng: Double = 0.0
     private var lastUpdateMs: Long = 0L
 
-    // ── Direkter LocationListener (foreground-only) ───────────────────────────
-    // Liefert GPS-Updates DIREKT an die Activity, unabhängig vom Service-
-    // Broadcast. Damit ist die Karte auch dann zuverlässig aktuell, wenn der
-    // Broadcast vom Service (auf manchen Android-Versionen / OEM-Builds)
-    // verloren geht.
+    // ── Direkter LocationListener ──────────────────────────────────────────────
     private val directLocationListener = object : LocationListener {
         override fun onLocationChanged(loc: Location) {
             onGpsUpdate(
@@ -131,7 +101,6 @@ class MainActivity : AppCompatActivity() {
         override fun onProviderDisabled(p: String) {}
     }
 
-    // ── GPS Broadcast Receiver (Fallback) ─────────────────────────────────────
     private val locationReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
             val lat   = intent.getDoubleExtra(GpsService.EXTRA_LAT, 0.0)
@@ -178,18 +147,17 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         map.onResume()
 
-        // Broadcast (Fallback)
         ContextCompat.registerReceiver(
             this, locationReceiver,
             IntentFilter(GpsService.BROADCAST_LOCATION),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
 
-        // Direkter LocationListener (Primärquelle für Map-Updates)
         startDirectLocationUpdates()
 
         if (AppPrefs.vehicleToken.isNotEmpty() && AppPrefs.activeCollectionId.isNotEmpty()) {
             startPolling()
+            startTrackPolling()
         }
         updateBufferCount()
         updateCollectingUI()
@@ -201,19 +169,18 @@ class MainActivity : AppCompatActivity() {
         try { unregisterReceiver(locationReceiver) } catch (_: Exception) {}
         try { locationManager.removeUpdates(directLocationListener) } catch (_: Exception) {}
         pollJob?.cancel()
+        trackJob?.cancel()
         AppPrefs.lastMapLat  = map.mapCenter.latitude
         AppPrefs.lastMapLng  = map.mapCenter.longitude
         AppPrefs.lastMapZoom = map.zoomLevelDouble
     }
 
-    // ── Direkte GPS-Updates (Foreground) ──────────────────────────────────────
+    // ── Direkte GPS-Updates ────────────────────────────────────────────────────
     private fun startDirectLocationUpdates() {
         if (ContextCompat.checkSelfPermission(
                 this, Manifest.permission.ACCESS_FINE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED) return
 
-        // Letzte bekannte Position holen — sofortige Karten-Zentrierung,
-        // damit der User nicht auf den ersten GPS-Fix warten muss.
         val lastGps = try {
             locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
         } catch (_: Exception) { null }
@@ -232,7 +199,6 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        // Echte Updates registrieren
         try {
             locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER, 1000L, 1f, directLocationListener
@@ -261,6 +227,7 @@ class MainActivity : AppCompatActivity() {
         tvBuffered         = findViewById(R.id.tv_buffered)
         btnFollow          = findViewById(R.id.btn_follow)
         tvCollectionStatus = findViewById(R.id.tv_collection_status)
+        btnToggleTrack     = findViewById(R.id.btn_toggle_track)
 
         tvVehicleName.text = AppPrefs.vehicleName
 
@@ -268,15 +235,14 @@ class MainActivity : AppCompatActivity() {
         btnCollect.setOnClickListener { toggleCollecting() }
 
         btnToggleSidebar.setOnClickListener { toggleSidebar() }
-
         btnExit.setOnClickListener { confirmExit() }
-
-        // Follow-Button: zentriert auf aktuelle Position und aktiviert followMode
         btnFollow.setOnClickListener { centerOnCurrentPosition() }
         updateFollowButton()
 
-        // Touch-Listener: followMode NUR bei tatsächlicher Bewegung deaktivieren,
-        // nicht bei einem simplen Tap.
+        // Fahrspur-Toggle
+        btnToggleTrack.setOnClickListener { toggleVehicleTrack() }
+        updateTrackButton()
+
         map.setOnTouchListener { _, ev ->
             if (followMode && ev.action == MotionEvent.ACTION_MOVE) {
                 followMode = false
@@ -296,8 +262,23 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun toggleVehicleTrack() {
+        showVehicleTrack = !showVehicleTrack
+        updateTrackButton()
+        if (showVehicleTrack) {
+            lifecycleScope.launch { loadVehicleTracks() }
+        } else {
+            clearVehicleTracks()
+        }
+    }
+
+    private fun updateTrackButton() {
+        btnToggleTrack.setColorFilter(
+            Color.parseColor(if (showVehicleTrack) "#ffd700" else "#7a9ab0")
+        )
+    }
+
     private fun centerOnCurrentPosition() {
-        // 1) Selbst-Marker vorhanden → direkt zentrieren
         val pos = selfMarker?.position
         if (pos != null) {
             map.controller.animateTo(pos)
@@ -307,7 +288,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 2) Fallback: last-known location anfragen
         if (ContextCompat.checkSelfPermission(
                 this, Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED) {
@@ -329,7 +309,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 3) Nichts verfügbar
         Toast.makeText(this, "⌛ Warte auf GPS-Fix…", Toast.LENGTH_SHORT).show()
     }
 
@@ -367,7 +346,6 @@ class MainActivity : AppCompatActivity() {
         map.controller.setZoom(AppPrefs.lastMapZoom)
         map.controller.setCenter(GeoPoint(AppPrefs.lastMapLat, AppPrefs.lastMapLng))
 
-        // Dunkles Filter passend zum App-Theme
         map.overlayManager.tilesOverlay.setColorFilter(
             android.graphics.ColorMatrixColorFilter(
                 floatArrayOf(
@@ -507,6 +485,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         startPolling()
+        startTrackPolling()
     }
 
     // ── Polling ───────────────────────────────────────────────────────────────
@@ -545,16 +524,77 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── GPS-Update ────────────────────────────────────────────────────────────
-    /**
-     * Wird aufgerufen sowohl vom direkten LocationListener als auch vom
-     * Service-Broadcast. Debounced auf MIN_UPDATE_INTERVAL_MS, um Doppel-
-     * Updates aus beiden Quellen zu vermeiden.
-     */
-    private fun onGpsUpdate(lat: Double, lng: Double, speed: Double?) {
-        if (lat == 0.0 && lng == 0.0) return   // Ungültige Koordinaten ignorieren
+    // ── Vehicle Track Polling ──────────────────────────────────────────────────
+    private fun startTrackPolling() {
+        trackJob?.cancel()
+        val tok = AppPrefs.vehicleToken
+        val cid = AppPrefs.activeCollectionId
+        if (tok.isEmpty() || cid.isEmpty()) return
 
-        // Debounce: identische Position aus zwei Quellen schnell hintereinander?
+        trackJob = lifecycleScope.launch {
+            while (isActive) {
+                if (showVehicleTrack) {
+                    loadVehicleTracks()
+                }
+                delay(5000)   // Fahrspur alle 5 Sekunden aktualisieren
+            }
+        }
+    }
+
+    private suspend fun loadVehicleTracks() {
+        val tok = AppPrefs.vehicleToken
+        val cid = AppPrefs.activeCollectionId
+        if (tok.isEmpty() || cid.isEmpty()) return
+
+        val trackResp = ApiClient.getTrack(tok, cid) ?: return
+
+        runOnUiThread {
+            renderVehicleTrack(trackResp)
+            map.invalidate()
+        }
+    }
+
+    private fun renderVehicleTrack(trackResp: JSONObject) {
+        clearVehicleTracks()
+
+        // Track kann verschiedene Formate haben:
+        // 1) {"points": [[lat, lng], ...]}
+        // 2) {"data": [[lat, lng], ...]}
+        // 3) Direktes Array von Punkten
+        val pointsArr = trackResp.optJSONArray("points")
+            ?: trackResp.optJSONArray("track")
+            ?: trackResp.optJSONArray("data")
+            ?: trackResp.optJSONArray("result")
+            ?: return
+
+        if (pointsArr.length() < 2) return
+
+        val poly = Polyline(map).apply {
+            outlinePaint.color = Color.parseColor("#00d4ff")
+            outlinePaint.strokeWidth = 3f
+            outlinePaint.alpha = 180
+        }
+
+        for (i in 0 until pointsArr.length()) {
+            val pt = pointsArr.getJSONArray(i)
+            if (pt.length() >= 2) {
+                poly.addPoint(GeoPoint(pt.getDouble(0), pt.getDouble(1)))
+            }
+        }
+
+        map.overlays.add(poly)
+        trackPolylines["self_track"] = poly
+    }
+
+    private fun clearVehicleTracks() {
+        trackPolylines.values.forEach { map.overlays.remove(it) }
+        trackPolylines.clear()
+    }
+
+    // ── GPS-Update ────────────────────────────────────────────────────────────
+    private fun onGpsUpdate(lat: Double, lng: Double, speed: Double?) {
+        if (lat == 0.0 && lng == 0.0) return
+
         val now = System.currentTimeMillis()
         if (now - lastUpdateMs < MIN_UPDATE_INTERVAL_MS &&
             kotlin.math.abs(lat - myLat) < 0.0000005 &&
@@ -568,7 +608,6 @@ class MainActivity : AppCompatActivity() {
 
         val pt = GeoPoint(lat, lng)
 
-        // Ersten GPS-Fix: sofort auf Benutzerposition zoomen
         if (firstGpsFix) {
             firstGpsFix = false
             map.controller.setZoom(16.0)
@@ -578,13 +617,14 @@ class MainActivity : AppCompatActivity() {
             AppPrefs.lastMapLng  = lng
         }
 
-        // Eigenen Marker erstellen / aktualisieren
         if (selfMarker == null) {
             selfMarker = Marker(map).apply {
                 title    = AppPrefs.vehicleName
                 snippet  = selfSnippet()
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 position = pt
+                // Custom Marker: blauer Punkt mit Pfeil (Google Maps Style)
+                setIcon(AppCompatResources.getDrawable(this@MainActivity, R.drawable.ic_self_marker))
                 map.overlays.add(this)
             }
         } else {
@@ -594,7 +634,6 @@ class MainActivity : AppCompatActivity() {
 
         if (followMode) map.controller.animateTo(pt)
 
-        // Geschwindigkeit anzeigen
         val kmh = speed?.let { it * 3.6 }
         if (kmh != null && kmh > 0.5) {
             tvSpeed.text       = "%.1f km/h".format(kmh)
@@ -604,11 +643,8 @@ class MainActivity : AppCompatActivity() {
             tvSpeed.visibility = View.GONE
         }
 
-        // Status mit GPS-Koordinaten
         tvStatus.text = "%.5f, %.5f".format(lat, lng)
 
-        // Sidebar mit eigenen Koordinaten aktualisieren (auch wenn Server noch
-        // keinen Eintrag hat)
         renderVehicleSidebar()
 
         keepMarkersOnTop()
@@ -658,7 +694,6 @@ class MainActivity : AppCompatActivity() {
         val myToken      = AppPrefs.vehicleToken
         val activeTokens = vehicles.map { it.optString("token") }.toSet()
 
-        // Verschwundene Fahrzeuge entfernen
         vehicleMarkers.keys.toList().filter { it !in activeTokens }.forEach {
             map.overlays.remove(vehicleMarkers[it])
             vehicleMarkers.remove(it)
@@ -666,9 +701,8 @@ class MainActivity : AppCompatActivity() {
 
         vehicles.forEach { v ->
             val token = v.optString("token")
-            if (token == myToken) return@forEach   // eigenes Fahrzeug → selfMarker
+            if (token == myToken) return@forEach
             if (v.isNull("lat") || v.isNull("lng")) {
-                // Wenn Server keine Koords (mehr) liefert, alten Marker entfernen
                 vehicleMarkers[token]?.let { map.overlays.remove(it) }
                 vehicleMarkers.remove(token)
                 return@forEach
@@ -682,14 +716,11 @@ class MainActivity : AppCompatActivity() {
             marker.title    = v.optString("name", token)
             val state = if (v.optBoolean("collecting", false)) "🟢 Sammeln" else "○ Idle"
             marker.snippet  = "$state\n%.5f, %.5f".format(vLat, vLng)
+            // Custom Marker für fremde Fahrzeuge: grüner Punkt
+            marker.setIcon(AppCompatResources.getDrawable(this, R.drawable.ic_vehicle_marker))
         }
     }
 
-    /**
-     * OSMDroid rendert Overlays in Hinzufüge-Reihenfolge. Polylines werden
-     * alle 2.5s neu hinzugefügt → würden Marker überdecken. Daher Marker
-     * nach jedem Render-Cycle ans Ende der Liste heben.
-     */
     private fun keepMarkersOnTop() {
         vehicleMarkers.values.forEach {
             map.overlays.remove(it)
@@ -743,7 +774,6 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, 4, 0, 4)
             }
 
-            // Header: Status-Dot + Name
             val header = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -763,8 +793,6 @@ class MainActivity : AppCompatActivity() {
             header.addView(dot); header.addView(name)
             container.addView(header)
 
-            // GPS-Koordinaten: für eigenes Fahrzeug bevorzugt LOKALE Position,
-            // sonst Server-Daten.
             val (lat, lng) = when {
                 isMe && (myLat != 0.0 || myLng != 0.0) -> myLat to myLng
                 !v.isNull("lat") && !v.isNull("lng")   -> v.optDouble("lat") to v.optDouble("lng")
@@ -791,8 +819,6 @@ class MainActivity : AppCompatActivity() {
             vehicleList.addView(container)
         }
 
-        // Wenn der eigene Eintrag noch nicht in der Server-Liste ist (z.B.
-        // direkt nach App-Start, vor erstem GPS-Upload), trotzdem anzeigen:
         if (myToken.isNotEmpty() && vehicles.none { it.optString("token") == myToken }) {
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -903,8 +929,6 @@ class MainActivity : AppCompatActivity() {
             )
         } else {
             restartGpsService()
-            // Direkter Listener wird in onResume gestartet — hier nur
-            // sicherheitshalber nochmal, falls onResume schon durch ist.
             startDirectLocationUpdates()
             requestBackgroundLocationIfNeeded()
             requestBatteryOptimizationExemption()
@@ -983,7 +1007,7 @@ class MainActivity : AppCompatActivity() {
                     ).show()
                 }
             }
-            REQ_BACKGROUND_LOCATION -> { /* kein weiterer Action nötig */ }
+            REQ_BACKGROUND_LOCATION -> {}
         }
     }
 }

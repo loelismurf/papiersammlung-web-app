@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Äusserer Kreis: blau mit weissem Rand -->
+    <path
+        android:pathData="M10,24 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0 Z"
+        android:fillColor="#0099dd"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="3" />
+
+    <!-- Innerer Kreis: hellblau -->
+    <path
+        android:pathData="M15,24 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 Z"
+        android:fillColor="#00d4ff" />
+
+    <!-- Nordpfeil (weisses Dreieck nach oben) -->
+    <path
+        android:pathData="M24,6 L29,16 L24,13 L19,16 Z"
+        android:fillColor="#ffffff" />
+
+</vector>

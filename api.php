@@ -354,14 +354,19 @@ try {
         $token = $_GET['token'] ?? '';
         $cid   = $_GET['collection_id'] ?? '';
         if (!$token || !$cid) error_response('Parameter fehlen');
+
+        // Auto-Cleanup: Tracks älter als 7 Tage löschen
+        try { db_run("DELETE FROM vehicle_tracks WHERE recorded_at < DATE_SUB(NOW(), INTERVAL 7 DAY)"); } catch (Exception $e) {}
+
         // Letzte 800 Punkte, älteste zuerst
         $rows = db_rows("SELECT lat,lng,speed,recorded_at FROM vehicle_tracks
                          WHERE token=? AND collection_id=?
                          ORDER BY recorded_at DESC LIMIT 800",
                         [$token,$cid]);
         $rows = array_reverse($rows); // chronologisch
-        $track = array_map(fn($r)=>[(float)$r['lat'],(float)$r['lng']],$rows);
-        json_response(['track'=>$track,'count'=>count($track)]);
+        $points = array_map(fn($r)=>[(float)$r['lat'],(float)$r['lng']],$rows);
+        $latestTime = !empty($rows) ? end($rows)['recorded_at'] : null;
+        json_response(['points'=>$points,'count'=>count($points),'latest_at'=>$latestTime]);
 
     // ── Route-Reset (einzige verbleibende Route-Aktion für User) ─────────────
     case 'route_reset':

@@ -345,11 +345,12 @@ async function loadTrack(token) {
   try {
     const qs = new URLSearchParams({action:'vehicle_track', token, collection_id:currentColId});
     const data = await (await fetch(`${API}?${qs}`)).json();
-    if (data.track && data.track.length > 1) {
+    const pts = data.points || data.track || [];
+    if (pts.length > 1) {
       if (trackLayers[token]) map.removeLayer(trackLayers[token]);
       const veh = vehicles.find(v=>v.token===token);
       const col = veh?.token===myToken ? '#ffd700' : (veh?.collecting ? '#00d4ff' : '#4a5a6a');
-      trackLayers[token] = L.polyline(data.track, {
+      trackLayers[token] = L.polyline(pts, {
         color: col, weight:3, opacity:0.65, dashArray:'6,4', lineCap:'round'
       }).addTo(map);
     }
