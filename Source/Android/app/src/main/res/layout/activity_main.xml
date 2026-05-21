@@ -6,51 +6,28 @@
     android:layout_height="match_parent"
     android:background="#0a0c0f">
 
-    <!-- Karte (füllt den rechten/unteren Bereich) -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- KARTE — füllt den gesamten Hintergrund                              -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
     <org.osmdroid.views.MapView
         android:id="@+id/map"
         android:layout_width="0dp"
         android:layout_height="0dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/sidebar"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Follow-Button (erscheint wenn Karte manuell verschoben) -->
-    <ImageButton
-        android:id="@+id/btn_follow"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:src="@android:drawable/ic_menu_mylocation"
-        android:background="#aa0f1216"
-        android:tint="#00d4ff"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/map"
-        app:layout_constraintEnd_toEndOf="@id/map"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="60dp" />
-
-    <!-- Offline-Puffer-Anzeige -->
-    <TextView
-        android:id="@+id/tv_buffered"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:background="#ccff6b35"
-        android:textColor="#fff"
-        android:textSize="11sp"
-        android:padding="6dp"
-        android:visibility="gone"
-        app:layout_constraintTop_toTopOf="@id/map"
-        app:layout_constraintStart_toStartOf="@id/map"
-        app:layout_constraintEnd_toEndOf="@id/map"
-        android:layout_marginTop="8dp" />
-
-    <!-- Sidebar -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- SIDEBAR — Overlay über der Karte                                    -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
     <ScrollView
         android:id="@+id/sidebar"
-        android:layout_width="280dp"
+        android:layout_width="272dp"
         android:layout_height="0dp"
-        android:background="#0f1216"
+        android:background="#F00f1216"
+        android:elevation="8dp"
+        android:scrollbars="none"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent">
@@ -59,15 +36,25 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="20dp">
 
-            <!-- Header -->
+            <!-- ── Header ──────────────────────────────────────── -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginBottom="12dp">
+                android:layout_marginBottom="10dp">
+
+                <ImageView
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:src="@mipmap/ic_launcher"
+                    android:layout_marginEnd="8dp"
+                    android:contentDescription="Logo" />
 
                 <TextView
                     android:layout_width="0dp"
@@ -75,41 +62,52 @@
                     android:layout_weight="1"
                     android:text="PAPIER·SAMMLUNG"
                     android:textColor="#00d4ff"
-                    android:textSize="14sp"
-                    android:letterSpacing="0.1"
+                    android:textSize="13sp"
+                    android:letterSpacing="0.12"
                     android:fontFamily="sans-serif-condensed" />
 
                 <ImageButton
                     android:id="@+id/btn_settings"
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
                     android:src="@android:drawable/ic_menu_preferences"
                     android:background="?android:selectableItemBackgroundBorderless"
-                    android:tint="#4a5a6a" />
+                    android:tint="#4a5a6a"
+                    android:contentDescription="Einstellungen" />
+
+                <ImageButton
+                    android:id="@+id/btn_exit"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_exit"
+                    android:background="?android:selectableItemBackgroundBorderless"
+                    android:contentDescription="App beenden"
+                    android:layout_marginStart="4dp" />
+
             </LinearLayout>
 
-            <!-- Fahrzeug-Name -->
+            <!-- ── Fahrzeug-Name ─────────────────────────────────── -->
             <TextView
                 android:id="@+id/tv_vehicle_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="#ffd700"
-                android:textSize="16sp"
+                android:textSize="17sp"
                 android:fontFamily="sans-serif-medium"
-                android:layout_marginBottom="4dp" />
+                android:layout_marginBottom="2dp" />
 
-            <!-- Status -->
+            <!-- ── Status / GPS-Koords ─────────────────────────── -->
             <TextView
                 android:id="@+id/tv_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Bereit"
+                android:text="⌛ Warte auf GPS…"
                 android:textColor="#4a5a6a"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:fontFamily="monospace"
-                android:layout_marginBottom="4dp" />
+                android:layout_marginBottom="2dp" />
 
-            <!-- Geschwindigkeit -->
+            <!-- ── Geschwindigkeit ───────────────────────────────── -->
             <TextView
                 android:id="@+id/tv_speed"
                 android:layout_width="wrap_content"
@@ -118,19 +116,26 @@
                 android:textSize="11sp"
                 android:fontFamily="monospace"
                 android:visibility="gone"
-                android:layout_marginBottom="12dp" />
+                android:layout_marginBottom="10dp" />
 
-            <!-- Sammel-Button -->
+            <!-- ── Sammel-Button ─────────────────────────────────── -->
             <Button
                 android:id="@+id/btn_collect"
                 android:layout_width="match_parent"
-                android:layout_height="44dp"
+                android:layout_height="48dp"
                 android:text="🔴 Nicht am Sammeln"
                 android:textColor="#c8d4e0"
                 android:textSize="13sp"
+                android:layout_marginTop="8dp"
                 android:layout_marginBottom="16dp" />
 
-            <!-- Sammlung auswählen -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#1a2530"
+                android:layout_marginBottom="10dp" />
+
+            <!-- ── Sammlung ─────────────────────────────────────── -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -140,14 +145,30 @@
                 android:letterSpacing="0.2"
                 android:layout_marginBottom="4dp" />
 
+            <TextView
+                android:id="@+id/tv_collection_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#4a5a6a"
+                android:textSize="11sp"
+                android:fontFamily="monospace"
+                android:visibility="gone"
+                android:layout_marginBottom="4dp" />
+
             <Spinner
                 android:id="@+id/spinner_collection"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
                 android:background="#0a0c0f"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="14dp" />
 
-            <!-- Routen-Liste -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#1a2530"
+                android:layout_marginBottom="10dp" />
+
+            <!-- ── Routen ───────────────────────────────────────── -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -155,16 +176,22 @@
                 android:textColor="#4a5a6a"
                 android:textSize="9sp"
                 android:letterSpacing="0.2"
-                android:layout_marginBottom="4dp" />
+                android:layout_marginBottom="6dp" />
 
             <LinearLayout
                 android:id="@+id/route_list"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="14dp" />
 
-            <!-- Fahrzeug-Liste -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#1a2530"
+                android:layout_marginBottom="10dp" />
+
+            <!-- ── Fahrzeuge ────────────────────────────────────── -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -172,7 +199,7 @@
                 android:textColor="#4a5a6a"
                 android:textSize="9sp"
                 android:letterSpacing="0.2"
-                android:layout_marginBottom="4dp" />
+                android:layout_marginBottom="6dp" />
 
             <LinearLayout
                 android:id="@+id/vehicle_list"
@@ -182,5 +209,57 @@
 
         </LinearLayout>
     </ScrollView>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- SIDEBAR-TOGGLE                                                      -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <ImageButton
+        android:id="@+id/btn_toggle_sidebar"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@drawable/ic_chevron_left"
+        android:background="#CC0f1216"
+        android:elevation="10dp"
+        android:contentDescription="Sidebar ein-/ausblenden"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toEndOf="@id/sidebar"
+        android:layout_marginTop="56dp"
+        android:layout_marginStart="0dp" />
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- MAP-OVERLAY: Offline-Puffer Banner                                  -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <TextView
+        android:id="@+id/tv_buffered"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="#ccff6b35"
+        android:textColor="#fff"
+        android:textSize="11sp"
+        android:padding="6dp"
+        android:visibility="gone"
+        android:elevation="6dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="8dp" />
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- FOLLOW-BUTTON — IMMER sichtbar. Farbton zeigt followMode-Status.    -->
+    <!-- Vorher: visibility="gone" → erst nach Map-Drag klickbar. Buggy.     -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <ImageButton
+        android:id="@+id/btn_follow"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:src="@android:drawable/ic_menu_mylocation"
+        android:background="#E60f1216"
+        android:tint="#00d4ff"
+        android:elevation="6dp"
+        android:contentDescription="Auf Position zentrieren"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginEnd="14dp"
+        android:layout_marginBottom="24dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
