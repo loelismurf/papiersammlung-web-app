@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0a0c0f"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="EINSTELLUNGEN"
+        android:textColor="#00d4ff"
+        android:textSize="16sp"
+        android:letterSpacing="0.15"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:id="@+id/tv_current_user"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#c8d4e0"
+        android:textSize="14sp"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:id="@+id/tv_current_server"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#4a5a6a"
+        android:textSize="12sp"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="32dp" />
+
+    <Button
+        android:id="@+id/btn_logout"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="Abmelden"
+        android:backgroundTint="#ff4444"
+        android:textColor="#fff" />
+
+</LinearLayout>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Papiersammlung</string>
+    <string name="settings">Einstellungen</string>
+    <string name="login">Anmelden</string>
+    <string name="logout">Abmelden</string>
+    <string name="collecting_on">Am Sammeln</string>
+    <string name="collecting_off">Nicht am Sammeln</string>
+    <string name="gps_service_title">GPS-Tracking aktiv</string>
+    <string name="gps_service_idle">GPS aktiv (Bereit)</string>
+    <string name="offline_buffer">Offline-Punkte gepuffert</string>
+</resources>

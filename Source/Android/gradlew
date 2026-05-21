@@ -1,0 +1,29 @@
+#!/bin/sh
+# Gradle Wrapper Script (Unix)
+# Lädt Gradle automatisch herunter wenn nötig
+
+APP_NAME="Gradle"
+APP_BASE_NAME=$(basename "$0")
+APP_HOME=$(dirname "$0")
+APP_HOME=$(cd "$APP_HOME" && pwd)
+
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+
+# OS-spezifisch
+case "$(uname)" in
+  Darwin* ) DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"' ;;
+  *       ) DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"' ;;
+esac
+
+# Java finden
+if [ -n "$JAVA_HOME" ]; then
+  JAVACMD="$JAVA_HOME/bin/java"
+elif [ -f "/usr/bin/java" ]; then
+  JAVACMD="/usr/bin/java"
+else
+  JAVACMD="java"
+fi
+
+exec "$JAVACMD" $DEFAULT_JVM_OPTS \
+  -classpath "$CLASSPATH" \
+  org.gradle.wrapper.GradleWrapperMain "$@"

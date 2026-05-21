@@ -1,1 +1,17 @@
-﻿config.php
+# ══════════════════════════════════════════════════════════════
+#  Papiersammlung – Root .gitignore (PHP-Webprojekt)
+# ══════════════════════════════════════════════════════════════
+
+# ── Zugangsdaten (NIEMALS einchecken!) ────────────────────────
+config.php
+
+# ── Betriebssystem ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor / IDE ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~

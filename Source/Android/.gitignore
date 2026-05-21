@@ -1,0 +1,45 @@
+# ══════════════════════════════════════════════════════════════
+#  Papiersammlung Android – .gitignore
+#  Basiert auf den tatsächlichen Ordnern im Projekt
+# ══════════════════════════════════════════════════════════════
+
+# ── Build-Output (alles unter app/build/ und build/) ──────────
+app/build/
+build/
+
+# ── Gradle-Cache (maschinenspezifisch, wird neu generiert) ────
+.gradle/
+
+# ── Android Studio Projektdateien ─────────────────────────────
+.idea/
+
+# ── Lokale SDK-Konfiguration (dein PC-Pfad, z.B. C:\Users\...) 
+local.properties
+
+# ── Gradle Daemon JVM-Einstellungen (lokal, nicht teilen) ─────
+gradle/gradle-daemon-jvm.properties
+
+# ── Signing / Keystore (NIEMALS einchecken!) ──────────────────
+*.jks
+*.keystore
+keystore.properties
+
+# ── APK / AAB (werden neu gebaut, nicht einchecken) ───────────
+*.apk
+*.aab
+*.ap_
+
+# ── Betriebssystem ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ────────────────────────────────────────────────────
+*.swp
+*~
+
+# ── Diese Dateien MÜSSEN eingecheckt sein (nicht ignorieren) ──
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!gradlew
+!gradlew.bat

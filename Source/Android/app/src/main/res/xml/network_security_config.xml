@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Nur HTTPS erlaubt (kein Cleartext) -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- Debug: auch HTTP erlaubt für lokale Testserver -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+        <base-config cleartextTrafficPermitted="true" />
+    </debug-overrides>
+</network-security-config>

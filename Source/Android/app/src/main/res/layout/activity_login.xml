@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0a0c0f"
+    android:gravity="center"
+    android:padding="32dp">
+
+    <!-- Logo -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="PAPIER&#10;SAMMLUNG"
+        android:textColor="#00d4ff"
+        android:textSize="28sp"
+        android:fontFamily="sans-serif-condensed"
+        android:gravity="center"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pfadi Riko"
+        android:textColor="#4a5a6a"
+        android:textSize="13sp"
+        android:gravity="center"
+        android:layout_marginBottom="40dp" />
+
+    <!-- Server-URL: nur als Label sichtbar, editierbar per Klick -->
+    <TextView
+        android:id="@+id/tv_server_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#4a5a6a"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:gravity="center"
+        android:padding="8dp"
+        android:layout_marginBottom="4dp"
+        android:text="🌐 https://papiersammlung.pfadiriko.ch" />
+
+    <!-- Server-URL Eingabe (standardmässig versteckt) -->
+    <EditText
+        android:id="@+id/et_server"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:inputType="textUri"
+        android:textColor="#c8d4e0"
+        android:textColorHint="#4a5a6a"
+        android:hint="Server-URL"
+        android:background="#1a1f26"
+        android:padding="12dp"
+        android:textSize="12sp"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="16dp"
+        android:visibility="gone" />
+
+    <!-- Benutzername -->
+    <EditText
+        android:id="@+id/et_username"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:inputType="text"
+        android:textColor="#c8d4e0"
+        android:textColorHint="#4a5a6a"
+        android:hint="Benutzername"
+        android:background="#1a1f26"
+        android:padding="14dp"
+        android:textSize="15sp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Passwort -->
+    <EditText
+        android:id="@+id/et_password"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:inputType="textPassword"
+        android:textColor="#c8d4e0"
+        android:textColorHint="#4a5a6a"
+        android:hint="Passwort"
+        android:background="#1a1f26"
+        android:padding="14dp"
+        android:textSize="15sp"
+        android:imeOptions="actionDone"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Fehlermeldung -->
+    <TextView
+        android:id="@+id/tv_error"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#ff6b35"
+        android:textSize="12sp"
+        android:padding="8dp"
+        android:gravity="center"
+        android:visibility="gone"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Ladebalken -->
+    <ProgressBar
+        android:id="@+id/progress_bar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:indeterminateTint="#00d4ff"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Login-Button -->
+    <Button
+        android:id="@+id/btn_login"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:text="Anmelden"
+        android:backgroundTint="#00d4ff"
+        android:textColor="#0a0c0f"
+        android:textSize="16sp"
+        android:fontFamily="sans-serif-medium" />
+
+    <!-- Hinweis Server -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Server-URL ändern: auf die URL oben tippen"
+        android:textColor="#2a3340"
+        android:textSize="10sp"
+        android:gravity="center"
+        android:layout_marginTop="16dp" />
+
+</LinearLayout>
