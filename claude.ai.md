@@ -1,6 +1,6 @@
 Papiersammlung - KI-Kontext fuer neue Chats
 
-Du hilfst mir eine PHP/MySQL Web-App namens Papiersammlung weiterzuentwickeln.
+Du hilfst mir eine PHP/MySQL Web-App + Android-App namens Papiersammlung weiterzuentwickeln.
 Ich lade jeweils die aktuellen Dateien als ZIP-Anhang hoch.
 
 ---
@@ -11,7 +11,7 @@ Fahrzeuge fahren vordefinierte Routen ab, GPS trackt den Fortschritt segment-gen
 
 ---
 
-Tech-Stack (unveraenderlich)
+Tech-Stack Web (unveraenderlich)
 - Hosting: Netcup Shared Hosting - kein Node.js, kein background-PHP, kein JSON_LENGTH()
 - Backend: PHP 8+ / MySQL / PDO
 - Frontend: Leaflet.js (OpenStreetMap) / Vanilla JS / Browser Polling alle 2.5s
@@ -20,23 +20,45 @@ Tech-Stack (unveraenderlich)
 - Design: Dunkles Theme (#0a0c0f, Akzent #00d4ff) / Rajdhani + JetBrains Mono
 - NoSleep.js (cdnjs, 0.12.0): verhindert Bildschirm-Dunkel auf iOS
 
+Tech-Stack Android-App (Source/Android/)
+- Sprache: Kotlin, minSdk 26, targetSdk 34
+- Karte: OSMDroid (OpenStreetMap, kein Google Maps)
+- Netzwerk: OkHttp 4.x
+- Hintergrund-GPS: ForegroundService (GpsService.kt) + WakeLock
+- Offline-Puffer: SQLite via OfflineBuffer.kt (kein Room)
+- Auth: Bearer-Token (30 Tage, via mobile_login API-Endpoint)
+- Build: Gradle 8.2, Android Studio Hedgehog+
+
 ---
 
-Dateistruktur
+Dateistruktur Web
 config.php          <- NIE ueberschreiben
-db.php              <- DB-Helfer, Geo-Algorithmen, Gap-Fill
+db.php              <- DB-Helfer, Geo-Algorithmen, Gap-Fill, ensure_api_tokens_table()
 auth.php            <- Session/Auth
-api.php             <- Alle API-Endpunkte
+api.php             <- Alle API-Endpunkte + CORS + Bearer-Token-Auth
 index.php           <- Karte + Sidebar (Fahreransicht)
 admin.php           <- Admin-Panel
 sw.js               <- Service Worker (Background-GPS)
 login.php / logout.php
 manifest.json / favicon.svg
-tmp/install.php     <- DB-Schema v5 (IMMER mitpflegen!)
+push.php            <- Web Push Notifications
+tmp/install.php     <- DB-Schema v5.1 (IMMER mitpflegen!)
+
+Dateistruktur Android (Source/Android/)
+app/src/main/java/ch/papiersammlung/app/
+  PapiersammlungApp.kt   <- Application, Notification-Channels
+  MainActivity.kt        <- Karte + Sidebar + GPS-Broadcast-Receiver
+  LoginActivity.kt       <- Login-Screen (Server-URL + Credentials)
+  SettingsActivity.kt    <- Abmelden, Info
+  GpsService.kt          <- ForegroundService: GPS im Hintergrund + WakeLock
+  SyncService.kt         <- Offline-Puffer beim Reconnect leeren
+  ApiClient.kt           <- OkHttp REST-Client mit Bearer-Auth
+  OfflineBuffer.kt       <- SQLite GPS-Puffer fuer Offline-Betrieb
+  AppPrefs.kt            <- SharedPreferences: Token, URL, Session
 
 ---
 
-Datenbank-Schema (v5)
+Datenbank-Schema (v5.1)
 
 users              (id, username, password_hash, role[admin/user], created_at)
 route_templates    (id, name, color, coordinates[JSON], description, created_at)
@@ -57,6 +79,9 @@ vehicle_tracks     (id BIGINT AUTO_INCREMENT,
                    lat, lng, speed[m/s float],
                    recorded_at DATETIME)
                    INDEX idx_track (token, collection_id, recorded_at)
+api_tokens         (id, token VARCHAR(64) UNIQUE, user_id, expires_at, last_used, created_at)
+                   INDEX idx_token, idx_user
+                   <- NEU v5.1: Bearer-Token-Auth fuer Mobile-Apps
 
 Koordinaten immer als [lat, lng]. OSRM gibt [lng, lat] -> admin.php wandelt um.
 
@@ -66,13 +91,10 @@ Route-Konzept (v5 - vereinfacht)
 
 - Routen haben keinen manuellen Start/Stop mehr
 - Neue Routen werden direkt mit status='active' angelegt
-- Alle bestehenden 'pending' Routen wurden per Migration auf 'active' gesetzt
 - Automatisches Tracking: vehicle_position iteriert ALLE non-completed Routen
-  der Collection und markiert Segmente wo das Fahrzeug faehrt
 - Auto-assign: assigned_token wird auf das zuletzt fahrende Fahrzeug gesetzt
 - Auto-complete: wenn alle Segmente true -> status='completed'
-- Einzige manuelle Aktion: Route zuruecksetzen (Admin, setzt auf status='active' wieder)
-- Keine route_start / route_pause / route_resume / route_complete Endpunkte mehr
+- Einzige manuelle Aktion: Route zuruecksetzen (Admin)
 
 ---
 
@@ -80,11 +102,7 @@ Fahrzeug-Konzept (v4+)
 
 - 1 Fahrzeug pro User (via user_id)
 - Auto-Join beim Seitenstart (vehicle_join findet Fahrzeug via user_id)
-- Fahrzeugname: Default=Benutzername, umbenennbar via vehicle_rename
-- Sammelmodus (collecting):
-    collecting=0, status='idle'  -> sichtbar, kein Tracking, kein Track-Punkt
-    collecting=1, status='driving' -> GPS wird aufgezeichnet, Segmente markiert
-- vehicle_set_collecting setzt collecting UND status gleichzeitig
+- Sammelmodus: collecting=0 status='idle' / collecting=1 status='driving'
 
 ---
 
@@ -100,51 +118,58 @@ vehicle_join            - Fahrzeug finden/erstellen (1 pro User, by user_id)
 vehicle_rename          - Umbenennen (nur eigenes)
 vehicle_set_collecting  - Sammelmodus {token, collecting:bool}
 vehicle_position        - GPS senden; trackt alle Routen wenn collecting=1
+vehicle_ping            - Nur last_seen aktualisieren (idle Fahrzeuge sichtbar halten) <- NEU v5.1
 vehicle_track           - GET: Fahrspur abrufen {token, collection_id}
-route_reset             - Admin: Route zuruecksetzen (-> status='active', segments=null)
+route_reset             - Admin: Route zuruecksetzen
 route_toggle            - Admin: Sichtbarkeit umschalten
+mobile_login            - POST {username,password} -> {token,expires_at} Bearer-Token <- NEU v5.1
+get_vapid_key / push_subscribe - Web Push
 
 ---
 
-Background-GPS (sw.js + index.php) - 3-Schichten-Architektur
+API-Authentifizierung (v5.1)
+
+Web-App: Session-Cookie (PHP-Session wie bisher)
+Mobile-App: Bearer-Token im Authorization-Header
+  POST api.php?action=mobile_login mit {username, password}
+  Response: {token, expires_at, username, role}
+  Alle weiteren Requests: Header "Authorization: Bearer <token>"
+  Alternativ: Header "X-Auth-Token: <token>" oder Body-Feld "auth_token"
+  Token-Gueltigkeit: 30 Tage, danach neuer Login noetig
+  Tabelle: api_tokens (auto-erstellt via ensure_api_tokens_table())
+
+CORS: Access-Control-Allow-Origin: * fuer alle api.php-Responses (Mobile-kompatibel)
+
+---
+
+Background-GPS Web (sw.js + index.php) - 3-Schichten-Architektur
 
 Schicht 1: fetch(..., keepalive:true)
-  Laeuft auch nach Tab-Wechsel weiter. Unterstuetzt in ALLEN modernen Browsern
-  (Chrome, Samsung Internet, Ecosia, Edge, Brave, Opera, Firefox).
-  sendGPS() verwendet immer keepalive:true, unabhaengig von Sichtbarkeit.
+  Laeuft auch nach Tab-Wechsel. sendGPS() immer mit keepalive:true.
+  BUGFIX v5.1: GPS wird auch im Idle gesendet (nicht nur beim Sammeln)
 
-Schicht 2: bgPageTimer (setInterval im Hauptthread, alle 6s)
-  Startet wenn App in HG geht (visibilitychange='hidden') UND collecting=1.
-  Feuert sendGPS() wenn watchPosition seit >8s keine Daten geliefert hat.
-  Laeuft auf Android auch im Hintergrund-Tab weiter.
-  Variable: bgPageTimer, lastGpsSentAt
+Schicht 2: bgPageTimer (setInterval, alle 6s)
+  BUGFIX v5.1: Startet jetzt IMMER wenn App in HG geht (auch idle).
+  Prueft ob watchPosition seit >8s keine Daten geliefert hat.
+  Sendet sendGPS() als Fallback (auch ohne collecting).
 
-Schicht 3: SW-Notification (sw.js)
-  SW zeigt persistente Notification -> haelt Browser-Prozess am Leben (Android).
-  SW-interne setInterval als weiterer Fallback (REQUEST_GPS -> Client).
-  SW Message Types:
-    BG_START   <- index.php wenn App in HG + collecting=1
-    BG_STOP    <- index.php wenn App wieder im VG
-    GPS_UPDATE <- index.php: letzter GPS-Stand fuer SW-Fallback
-    REQUEST_GPS -> SW an Client
+Schicht 3: SW-Notification (BG_START/BG_STOP)
+  Nur noch beim Sammeln (collecting=1) ausgeloest.
 
-Browser-Kompatibilitaet:
-  Android Chrome, Samsung Internet, Ecosia, Edge, Brave, Opera: alle 3 Schichten
-  Firefox Android: Schicht 1+2 (SW-Notification variiert)
-  iOS Safari/Chrome/Ecosia: kein Hintergrund moeglich (WebKit-Einschraenkung)
+Vehicle-Ping: pollState() sendet alle 2.5s vehicle_ping -> last_seen aktualisiert
+  -> Idle-Fahrzeuge verschwinden nicht nach 60s (BUGFIX v5.1)
 
-iOS-Workaround: NoSleep.js
-  Verhindert Bildschirm-Dunkel auf iOS via stilles Video-Loop.
-  WICHTIG: noSleep.enable() NUR aus User-Geste aufrufen (z.B. toggleCollecting()).
-  NIEMALS aus autoJoin(), loadCollections() oder anderen Auto-Funktionen aufrufen!
-  Grund: Video-Autoplay braucht zwingend eine User-Geste, sonst blockiert Browser.
-  noSleep.enable() wird aufgerufen in: toggleCollecting() wenn collecting=true
-  noSleep.disable() wird aufgerufen in: releaseWakeLock()
-  WakeLock API (Android) braucht keine User-Geste und bleibt in requestWakeLock().
+---
 
-isIOS-Erkennung:
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-             || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+Background-GPS Android (GpsService.kt)
+
+ForegroundService mit persistenter Notification.
+GPS-Interval: 3s beim Sammeln, 30s im Idle.
+WakeLock: PARTIAL_WAKE_LOCK (CPU wach, Bildschirm kann aus).
+Broadcast: Intent(BROADCAST_LOCATION) an MainActivity fuer Live-Karte.
+Offline-Modus: GPS-Punkte in OfflineBuffer (SQLite) speichern.
+Sync: alle 15s pruefen ob online, dann Puffer leeren (sequenziell).
+START_STICKY: Service wird nach Kill vom System neu gestartet.
 
 ---
 
@@ -152,78 +177,103 @@ Fahrspur (vehicle_tracks)
 
 - Jeder GPS-Punkt bei collecting=1 wird in vehicle_tracks gespeichert (inkl. speed m/s)
 - API: vehicle_track GET {token, collection_id} -> letzte 800 Punkte als [[lat,lng],...]
-- Index.php: Schaltflaeche pro Fahrzeug in der Fahrzeugliste toggelt Fahrspur
-- Fahrspur = gestrichelte Polyline in Fahrzeugfarbe, wird alle ~10s aktualisiert
+- index.php: Fahrspur-Toggle-Button (🛣) pro Fahrzeug in der Liste
+- BUGFIX v5.1: Fahrspur wird automatisch angezeigt wenn Sammeln startet (kein manueller Klick noetig)
+- Fahrspur = gestrichelte Polyline in Fahrzeugfarbe, alle ~10s aktualisiert
 - Tracks werden beim Loeschen einer Collection mitgeloescht
 
 ---
 
-Geschwindigkeitsanzeige
+Follow-Modus Karte (NEU v5.1)
 
-- GPS-Position liefert coords.speed (m/s, kann null sein)
-- Angezeigt im GPS-Bar als "X.X km/h" Badge
-- Im Fahrzeug-Marker: speed > 5 km/h -> kleine Zahl unter dem Marker-Kreis
-- Im Tooltip: Geschwindigkeit wenn verfuegbar
+Web-App:
+  followMode = true (Standard: Karte folgt GPS)
+  map.on('dragstart'): followMode = false, 🎯-Button erscheint (orange)
+  🎯-Button Click: followMode = true, Karte springt zur aktuellen Position
+  btn-follow: display:none wenn followMode=true, sichtbar wenn false
+  setFollowMode(bool): aktualisiert followMode + Button-Style
+  showMapBtns(): zeigt alle 3 Buttons (locate, fit-all, follow) + setzt followMode=true
+
+Android:
+  followMode in MainActivity
+  map.setOnTouchListener: followMode=false, btn_follow erscheint
+  btn_follow Click: followMode=true, animateTo(selfMarker)
+
+---
+
+Eigener GPS-Marker Web (selfGpsMarker) - NEU v5.1
+
+Problem: State-Poll-basierter Marker erscheint erst nach naechstem Poll (2.5s Verzoegerung)
+         und verschwindet wenn Fahrzeug kein lat/lng hat (erstes Laden).
+Loesung: selfGpsMarker = separater Leaflet-Marker direkt aus watchPosition
+  - Gold (#ffd700), 18px, zIndexOffset:2000 (immer vorne)
+  - Permanent-Tooltip: Name + Sammelmodus-Status
+  - Wird in watchPosition-Handler aktualisiert (jede GPS-Messung)
+  - Im vehicles.forEach wird self uebersprungen (selfGpsMarker hat Vorrang)
+  - updateSelfMarker(): erstellt oder aktualisiert den Marker
+  - removeSelfMarker(): beim Logout/Disconnect entfernen
+
+---
+
+Idle-Fahrzeug-Sichtbarkeit (BUGFIX v5.1)
+
+Vorher: Idle-Fahrzeug-Marker hatte Farbe #4a5a6a (fast schwarz auf dunklem Hintergrund)
+Jetzt:  Farbe #7a9ab0 (sichtbares Blaugrau)
+Vorher: bgPageTimer und visibilitychange nur bei isCollecting=true aktiv
+Jetzt:  bgPageTimer laeuft immer wenn joined (auch idle)
+Vorher: vehicle_ping fehlte -> Fahrzeuge gingen nach 60s offline
+Jetzt:  pollState() sendet vehicle_ping jede Runde
 
 ---
 
 Fahrzeug-Marker-Animation
 
-- CSS-Klasse 'animated' auf .leaflet-marker-icon: transition:transform 2200ms linear
-- Sprung >100m: 'animated' kurz entfernen -> Position setzen -> 'animated' wieder hinzufuegen
-- Funktion distM(lat1,lng1,lat2,lng2): Haversine-Distanz in Metern (JS-seitig)
-- Verhindert dass GPS-Spruenge (z.B. nach Tunnels) animiert werden
+CSS-Klasse 'animated' auf .leaflet-marker-icon: transition:transform 2200ms linear
+Sprung >100m: 'animated' entfernen -> Position setzen -> wieder hinzufuegen
+distM(lat1,lng1,lat2,lng2): Haversine in Metern (JS)
 
 ---
 
-Nicht-Sammeln-Warnung
+Geschwindigkeitsanzeige
 
-- Wenn Geschwindigkeit > 2 km/h UND collecting=0:
-  -> Oranges blinkendes Banner auf der Karte
-- Antippen: oeffnet Sidebar (falls Mobile-kollabiert) + aktiviert Sammelmodus direkt
-
----
-
-Benachrichtigungen (notify)
-
-- Anzeigedauer: 7000ms (7 Sekunden)
-- Typen: '' (accent/blau), 'g' (gruen), 'w' (orange/Warnung)
+GPS liefert coords.speed (m/s, kann null sein)
+Im GPS-Bar als "X.X km/h" Badge
+Im Fahrzeug-Marker: speed > 5 km/h -> kleine Zahl unter dem Kreis
 
 ---
 
 Mobile Sidebar
 
-- Handle-Leiste (44px) ist als erstes Kind von #sidebar, AUSSERHALB von #sidebar-inner
-- Beim Kollabieren (height:44px): Handle sichtbar, sidebar-inner versteckt
-- Floating-Button #mob-open-btn auf der Karte erscheint wenn kollabiert
-- Handle zeigt Sammelmodus-Indikator: Emoji 'grüner Kreis' wenn sammeln, Hamburger sonst
+Handle-Leiste (44px) als erstes Kind von #sidebar, AUSSERHALB von #sidebar-inner
+Floating-Button #mob-open-btn auf Karte wenn kollabiert
 
 ---
 
 Kern-Algorithmus: Segment-Erkennung (db.php)
 
-Datenmodell
-- Route hat N Koordinaten -> N-1 Segmente
-- driven_segments: bool-Array der Laenge N-1
-- progress: 0-100% (Anteil true-Segmente)
-
-Algorithmus
-GPS-Update -> api.php vehicle_position:
+GPS-Update -> vehicle_position:
   1. Fahrzeug lesen (vorherige Position)
   2. Neue GPS-Position + Track-Punkt speichern (nur wenn collecting=1)
-  3. Alle non-completed Routen der Collection laden
-  4. Fuer jede Route: GPS auf Route projizieren
-     -> Wenn innerhalb Toleranz: Segmente markieren + fill_small_gaps()
-     -> Route auf 'active' + assigned_token setzen
-     -> Falls alle Segmente true: Route auf 'completed'
+  3. Alle non-completed Routen laden
+  4. Fuer jede Route: GPS projizieren, Segmente markieren, fill_small_gaps()
+  5. Auto-complete wenn alle Segmente true
 
 Gap-Fill: fill_small_gaps(driven, maxGap=4)
-  Luecken von <=4 false-Segmenten zwischen true-Segmenten werden gefuellt.
+Toleranzen: OSRM 20m / Kein Snap 30m / Vorherige Position x2.0
 
-Toleranzen
-- Mit OSRM-Snap: 20m / Ohne Snap: 30m
-- Vorherige Position: Toleranz x 2.0
-- Max. Segmente auf einmal: 50
+---
+
+Offline-Puffer Android (OfflineBuffer.kt)
+
+Tabelle gps_buffer: id, token, collection_id, lat, lng, speed, snap_lat, snap_lng, recorded_at
+buffer(): GPS-Punkt lokal speichern
+getPending(limit): Punkte abrufen (aelteste zuerst)
+deleteIds(ids): erfolgreich gesendete loeschen
+count(): Anzahl gepufferter Punkte
+cleanup(): Punkte >24h loeschen
+
+GpsService: alle 15s periodicSync() -> getPending(50) -> ApiClient.sendPosition() -> deleteIds()
+MainActivity: updateBufferCount() zeigt Anzahl gepufferter Punkte an (orange Banner)
 
 ---
 
@@ -234,11 +284,17 @@ IMMER
 - tmp/install.php bei jeder Schema-Aenderung mitpflegen
 - Koordinaten immer als [lat, lng]
 - Alle geaenderten Dateien als ZIP ausgeben
+- Android: Source/Android/ Ordner mitliefern
 
 Netcup Shared Hosting
 - Kein JSON_LENGTH(), JSON_EXTRACT() -> PHP-seitig
 - Kein Background-PHP, kein Node.js, kein WebSocket
 - Browser-Polling alle 2.5s
+
+Android Build
+- Gradle 8.2, Android Studio Hedgehog+
+- assembleDebug: ./gradlew assembleDebug
+- APK: app/build/outputs/apk/debug/app-debug.apk
 
 ---
 
@@ -253,6 +309,10 @@ Luecken auf Geraden          | GPS-Ausreisser                   | fill_small_gap
 Mobile Sidebar kein Aufklappen | Handle im Scroll-Container    | Handle ausserhalb + Floating-Button
 Sprunganimation bei GPS-Sprung | immer animiert                 | distM() Pruefung >100m -> kein animated
 Browser blockiert Permission   | noSleep.enable() ohne Geste    | NUR in toggleCollecting() aufrufen
+Idle-Position nicht sichtbar   | bgPageTimer nur bei collecting | bgPageTimer immer + vehicle_ping (v5.1)
+Idle-Marker unsichtbar         | Farbe #4a5a6a (zu dunkel)      | Farbe #7a9ab0 (v5.1)
+GPS-Track nicht automatisch    | Nur manuell via Knopf          | Auto-start beim Sammeln (v5.1)
+Karte folgt nicht GPS          | Kein Follow-Modus              | followMode + 🎯-Button (v5.1)
 
 ---
 

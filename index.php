@@ -117,8 +117,10 @@ select:focus{border-color:var(--accent)}
 .mb .ml{color:var(--muted);font-size:9px;letter-spacing:2px;text-transform:uppercase}
 .mb .mv{color:var(--text);font-weight:500;margin-top:1px}
 #map-actions{position:absolute;bottom:58px;right:10px;z-index:500;display:flex;flex-direction:column;gap:5px}
-.map-btn{background:rgba(10,12,15,.92);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:8px 10px;font-size:15px;cursor:pointer;line-height:1;transition:border-color .2s;display:none}
+.map-btn{background:rgba(10,12,15,.92);backdrop-filter:blur(6px);border:1px solid var(--border2);border-radius:var(--r);padding:8px 10px;font-size:15px;cursor:pointer;line-height:1;transition:border-color .2s,color .2s;display:none}
 .map-btn:hover{border-color:var(--accent)}
+#btn-follow{display:none;border-color:var(--accent);color:var(--accent)}
+#btn-follow.follow-off{border-color:var(--orange);color:var(--orange)}
 
 /* ── Nicht-Sammeln-Warnung auf Karte ── */
 #no-collect-warn{
@@ -292,6 +294,7 @@ select:focus{border-color:var(--accent)}
   </div>
   <div id="notifs"></div>
   <div id="map-actions">
+    <button class="map-btn" id="btn-follow" title="Karte folgt GPS">🎯</button>
     <button class="map-btn" id="btn-locate" title="Zu meiner Position">📍</button>
     <button class="map-btn" id="btn-fit-all" title="Alle Routen">🗺</button>
   </div>
@@ -468,10 +471,11 @@ if ('serviceWorker' in navigator) {
 function getSwActive() { return swRegistration?.active ?? null; }
 
 // Seiten-Timer: Fallback wenn watchPosition im HG aufhört zu feuern
+// Läuft auch wenn idle, damit die Position sichtbar bleibt (BUGFIX)
 function startBgPageTimer() {
   if (bgPageTimer) return;
   bgPageTimer = setInterval(() => {
-    if (myLat !== null && isJoined && isCollecting && Date.now() - lastGpsSentAt > 8000) {
+    if (myLat !== null && isJoined && Date.now() - lastGpsSentAt > 8000) {
       sendGPS(myLat, myLng);
     }
   }, 6000);
@@ -481,10 +485,11 @@ function stopBgPageTimer() {
 }
 
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'hidden' && isJoined && isCollecting) {
+  if (document.visibilityState === 'hidden' && isJoined) {
+    // BgPageTimer immer starten (BUGFIX: auch wenn idle, damit Position sichtbar bleibt)
     startBgPageTimer();
-    // SW-Notification nur wenn Berechtigung bereits vorhanden (nie selbst anfragen!)
-    if (Notification?.permission === 'granted') {
+    // SW-Notification + BG_START nur im Sammelmodus (braucht Notification-Permission)
+    if (isCollecting && Notification?.permission === 'granted') {
       getSwActive()?.postMessage({ type: 'BG_START' });
     }
   } else if (document.visibilityState === 'visible') {
@@ -590,7 +595,28 @@ function sendGPS(lat, lng) {
 const map=L.map('map',{center:[47.3769,8.5417],zoom:13,zoomControl:false});
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
 L.control.zoom({position:'bottomleft'}).addTo(map);
-document.getElementById('btn-locate').addEventListener('click',()=>{if(myLat!==null)map.setView([myLat,myLng],17);else notify('Noch keine GPS-Position','w');});
+
+// ── Follow-Modus ──────────────────────────────────────────────────────────────
+let followMode = true; // Karte folgt automatisch der eigenen GPS-Position
+function setFollowMode(on) {
+  followMode = on;
+  const btn = document.getElementById('btn-follow');
+  if (on) {
+    btn.classList.remove('follow-off');
+    btn.title = 'Folge-Modus AN – Klick zum Deaktivieren';
+  } else {
+    btn.classList.add('follow-off');
+    btn.title = 'Karte folgt nicht – Klick zum Aktivieren';
+  }
+}
+// Karte wird manuell verschoben → Follow-Modus aus
+map.on('dragstart', () => { if (followMode) setFollowMode(false); });
+document.getElementById('btn-follow').addEventListener('click', () => {
+  setFollowMode(!followMode);
+  if (followMode && myLat !== null) map.setView([myLat, myLng], map.getZoom(), {animate:true});
+});
+
+document.getElementById('btn-locate').addEventListener('click',()=>{if(myLat!==null){map.setView([myLat,myLng],17);setFollowMode(true);}else notify('Noch keine GPS-Position','w');});
 document.getElementById('btn-fit-all').addEventListener('click',()=>{
   const all=routes.filter(r=>isRouteVisible(r)&&r.coordinates.length).flatMap(r=>r.coordinates);
   if(all.length)map.fitBounds(L.latLngBounds(all),{padding:[30,30]});else notify('Keine sichtbaren Routen','w');
@@ -691,11 +717,14 @@ async function toggleCollecting(){
   const r=await api('vehicle_set_collecting',{token:myToken,collecting:!isCollecting});
   if(r.error){notify(r.error,'w');return;}
   isCollecting=r.collecting; setMyStatus(r.status||'idle'); updateCollectingUI();
+  updateSelfMarker(); // Tooltip aktualisieren
   if(isCollecting){
     notify('🟢 Sammelmodus aktiviert – GPS wird aufgezeichnet','g');
     if(isIOS) notify('📱 iOS: App offen lassen – Hintergrund-GPS nicht möglich.','w');
     await requestWakeLock();
-    updatePushStatus(); // Push-Status aktualisieren
+    updatePushStatus();
+    // Eigene Fahrspur automatisch anzeigen beim Start des Sammelns
+    if(myToken && !trackVisible[myToken]){ trackVisible[myToken]=true; loadTrack(myToken); }
   } else {
     notify('🔴 Sammelmodus deaktiviert','w');
     stopBgPageTimer();
@@ -734,10 +763,12 @@ async function pollState(){
     if(data&&!data.error){routes=data.routes||[];vehicles=data.vehicles||[];renderAll();document.getElementById('pt').textContent='Live';document.getElementById('no-coll').style.display=routes.length?'none':'block';}
   }catch(e){document.getElementById('pt').textContent='Fehler';}
   maybeRefreshTracks();
+  // Vehicle-Ping: last_seen aktualisieren damit idle Fahrzeuge nicht als offline gelten
+  if(myToken) fetch(`${API}?action=vehicle_ping`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:myToken}),keepalive:true}).catch(()=>{});
   setTimeout(()=>pd.classList.remove('on'),400);
 }
 
-function showMapBtns(){document.getElementById('btn-locate').style.display='block';document.getElementById('btn-fit-all').style.display='block';}
+function showMapBtns(){document.getElementById('btn-locate').style.display='block';document.getElementById('btn-fit-all').style.display='block';document.getElementById('btn-follow').style.display='block';setFollowMode(true);}
 function setMyStatus(s){const el=document.getElementById('disp-vs');el.className=`vs ${s}`;el.textContent={idle:'Inaktiv',driving:'Fährt',paused:'Pausiert'}[s]||s;}
 
 // ── GPS ───────────────────────────────────────────────────────────────────────
@@ -770,7 +801,12 @@ function startGPS(){
       updateCollectingWarn(speedKmh ?? 0);
 
       if(isJoined) sendGPS(myLat, myLng);
+      // Follow-Modus: Karte zur aktuellen Position bewegen
+      if (followMode && isJoined) {
+        map.panTo([myLat, myLng], {animate:true, duration:1.0});
+      }
       if(!gpsInit){map.setView([myLat,myLng],15);gpsInit=true;}
+      updateSelfMarker();
     },
     err=>{document.getElementById('gdot').className='gdot err';document.getElementById('gps-txt').textContent={1:'GPS verweigert',2:'Position n/a',3:'GPS Timeout'}[err.code]||err.message;},
     {enableHighAccuracy:true,maximumAge:3000,timeout:15000}
@@ -778,6 +814,24 @@ function startGPS(){
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
+// Eigener GPS-Marker: wird direkt aus watchPosition aktualisiert (nicht nur aus State-Poll)
+// Behebt Bug: Position wird angezeigt auch wenn Fahrzeug nicht am Sammeln
+let selfGpsMarker = null;
+function updateSelfMarker() {
+  if (!isJoined || myLat === null || myLng === null) return;
+  const col = '#ffd700';
+  if (!selfGpsMarker) {
+    const html = `<div style="width:18px;height:18px;background:${col};border:2px solid #fff;border-radius:50%;box-shadow:0 0 12px ${col}"></div>`;
+    const icon = L.divIcon({ className:'', html, iconSize:[18,18], iconAnchor:[9,9] });
+    selfGpsMarker = L.marker([myLat, myLng], { icon, zIndexOffset:2000 }).addTo(map)
+      .bindTooltip(`<b>${myName||'Ich'}</b> (Ich)<br>${isCollecting?'🟢 Sammeln':'○ Bereit'}`, {permanent:true, direction:'top', offset:[0,-13], className:'rtt'});
+  } else {
+    selfGpsMarker.setLatLng([myLat, myLng]);
+    selfGpsMarker.getTooltip()?.setContent(`<b>${myName||'Ich'}</b> (Ich)<br>${isCollecting?'🟢 Sammeln':'○ Bereit'}`);
+  }
+}
+function removeSelfMarker(){ if(selfGpsMarker){map.removeLayer(selfGpsMarker);selfGpsMarker=null;} }
+
 function renderAll(){
   renderRoutes();renderRouteList();
   updateVehicleSnaps();renderVehicleMarkers();renderVehicleList();
@@ -834,12 +888,13 @@ function renderVehicleMarkers(){
   vehicles.forEach(v=>{
     if(v.lat===null||v.lng===null)return;
     const self=v.token===myToken;
+    if(self) return; // eigener Marker wird via selfGpsMarker direkt aus GPS gerendert
     if(!isVehicleVisible(v)){if(vehicleMarkers[v.token]){map.removeLayer(vehicleMarkers[v.token]);delete vehicleMarkers[v.token];delete vehicleMarkerProps[v.token];}return;}
     const snap=vehicleSnap[v.token];
     const snapFresh=!self&&snap&&Math.abs(snap.srcLat-v.lat)<SNAP_THRESHOLD&&Math.abs(snap.srcLng-v.lng)<SNAP_THRESHOLD;
     const dLat=snapFresh?snap.lat:v.lat,dLng=snapFresh?snap.lng:v.lng;
     const collecting=!!(v.collecting);
-    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':collecting?'#00d4ff':'#4a5a6a';
+    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':collecting?'#00d4ff':'#7a9ab0';
     const sz=self?18:12;
     // Geschwindigkeit für eigenes Fahrzeug anzeigen
     const spd = self && mySpeed != null ? mySpeed * 3.6 : null;
@@ -901,7 +956,7 @@ function renderVehicleList(){
   c.innerHTML=vehicles.map(v=>{
     const self=v.token===myToken,vis=isVehicleVisible(v);
     const collecting=!!(v.collecting);
-    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':v.status==='idle'?'var(--muted)':collecting?'#00d4ff':'#4a5a6a';
+    const col=self?'#ffd700':v.status==='paused'?'#ff6b35':v.status==='idle'?'#7a9ab0':collecting?'#00d4ff':'#7a9ab0';
     const trackOn=trackVisible[v.token]||false;
     return `<div class="vi${vis?'':' v-hidden'}">
       <div class="vd" style="background:${col}"></div>

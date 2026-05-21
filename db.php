@@ -169,3 +169,20 @@ function all_segments_driven(array $driven): bool {
     return !in_array(false,$driven,true) && !in_array(null,$driven,true);
 }
 function init_segments(int $n): array { return array_fill(0,max(0,$n-1),false); }
+
+// ── API-Tokens für Mobile-Apps ────────────────────────────────────────────────
+function ensure_api_tokens_table(): void {
+    static $checked = false; if ($checked) return; $checked = true;
+    try {
+        db_run("CREATE TABLE IF NOT EXISTS api_tokens (
+            id         INT AUTO_INCREMENT PRIMARY KEY,
+            token      VARCHAR(64)  NOT NULL UNIQUE,
+            user_id    INT          NOT NULL,
+            expires_at DATETIME     NOT NULL,
+            last_used  DATETIME     DEFAULT NULL,
+            created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_token (token),
+            INDEX idx_user  (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (Exception $e) {}
+}

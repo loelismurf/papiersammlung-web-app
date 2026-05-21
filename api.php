@@ -3,11 +3,58 @@ session_start();
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 
+// ── CORS für Mobile-Apps (Android / iOS) ──────────────────────────────────────
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+// Erlaube alle Origins (Mobile-Apps senden keinen Origin-Header oder eine App-URL)
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Auth-Token');
+header('Access-Control-Max-Age: 86400');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+
 header('Content-Type: application/json; charset=utf-8');
 $action = $_GET['action'] ?? '';
 
 if ($action === 'ping') { json_response(['ok'=>true]); }
-if (!isset($_SESSION['user_id'])) { error_response('Nicht eingeloggt', 401); }
+
+// ── Mobile-Login: gibt Bearer-Token zurück (kein Session-Cookie nötig) ────────
+if ($action === 'mobile_login') {
+    $data = body();
+    $username = trim($data['username'] ?? '');
+    $password = $data['password'] ?? '';
+    if (!$username || !$password) error_response('Username und Passwort erforderlich', 400);
+    $user = db_row("SELECT id, password_hash, role FROM users WHERE username=?", [$username]);
+    if (!$user || !password_verify($password, $user['password_hash']))
+        error_response('Ungültige Zugangsdaten', 401);
+    ensure_api_tokens_table();
+    // Alten Token für diesen User löschen, neuen erstellen (30 Tage gültig)
+    db_run("DELETE FROM api_tokens WHERE user_id=?", [$user['id']]);
+    $token = bin2hex(random_bytes(32));
+    $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+    db_run("INSERT INTO api_tokens (token, user_id, expires_at) VALUES (?,?,?)",
+           [$token, $user['id'], $expires]);
+    json_response(['token' => $token, 'expires_at' => $expires,
+                   'user_id' => $user['id'], 'username' => $username, 'role' => $user['role']]);
+}
+
+// ── Auth: Session ODER Bearer-Token (für Mobile-Apps) ────────────────────────
+if (!isset($_SESSION['user_id'])) {
+    // Bearer-Token aus Authorization-Header oder X-Auth-Token
+    $bearer = '';
+    $authHdr = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    if (preg_match('/^Bearer\s+(.+)$/i', $authHdr, $m)) $bearer = trim($m[1]);
+    if (!$bearer) $bearer = trim($_SERVER['HTTP_X_AUTH_TOKEN'] ?? '');
+    if (!$bearer) $bearer = trim($data['auth_token'] ?? $_GET['auth_token'] ?? '');
+    if ($bearer) {
+        ensure_api_tokens_table();
+        $tok = db_row("SELECT user_id FROM api_tokens WHERE token=? AND expires_at > NOW()", [$bearer]);
+        if ($tok) {
+            $_SESSION['user_id'] = $tok['user_id'];
+            db_run("UPDATE api_tokens SET last_used=NOW() WHERE token=?", [$bearer]);
+        }
+    }
+    if (!isset($_SESSION['user_id'])) error_response('Nicht eingeloggt', 401);
+}
 
 $admin   = is_admin();
 $data    = body();
@@ -325,6 +372,13 @@ try {
         $segs = $route ? json_encode(init_segments(count(json_decode($route['coordinates'],true)))) : 'null';
         db_run("UPDATE collection_routes SET status='active',progress=0,assigned_token=NULL,driven_segments=? WHERE id=?",[$segs,$rid]);
         json_response(['ok'=>true]);
+
+    // ── Vehicle Ping: last_seen aktualisieren (idle Fahrzeuge bleiben sichtbar) ─
+    case 'vehicle_ping':
+        $token = $data['token'] ?? '';
+        if (!$token) error_response('Token fehlt');
+        db_run("UPDATE vehicles SET last_seen=NOW() WHERE token=?", [$token]);
+        json_response(['ok'=>true,'ts'=>date('c')]);
 
     case 'route_toggle':
         if (!$admin) error_response('Kein Zugriff', 403);

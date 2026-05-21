@@ -190,6 +190,18 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     step(true, 'Tabelle `push_subscriptions` (Web Push) ← NEU v5');
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS api_tokens (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        token      VARCHAR(64)  NOT NULL UNIQUE,
+        user_id    INT          NOT NULL,
+        expires_at DATETIME     NOT NULL,
+        last_used  DATETIME     DEFAULT NULL,
+        created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_token (token),
+        INDEX idx_user  (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    step(true, 'Tabelle `api_tokens` (Mobile-App Bearer-Auth) ← NEU v5.1');
+
     step(true,'─── Installation v5 abgeschlossen ───');
 } catch (Exception $e) { step(false,'Fehler: '.$e->getMessage()); }
 ?>
