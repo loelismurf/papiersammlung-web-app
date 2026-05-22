@@ -27,10 +27,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.compass.CompassOverlay
+import org.osmdroid.views.overlay.compass.InternalCompassOrientationProvider
+import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 
 /**
  * Hauptaktivität v5.6 — mit Custom Markers und Vehicle Track History
@@ -60,6 +64,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCollectionStatus: TextView
     private lateinit var btnToggleTrack: ImageButton
     private lateinit var tvViewOnly: TextView
+    private lateinit var btnCompass: ImageButton
+    private var compassOverlay: CompassOverlay? = null
 
     // ── System Services ───────────────────────────────────────────────────────
     private lateinit var locationManager: LocationManager
@@ -75,6 +81,8 @@ class MainActivity : AppCompatActivity() {
     private var isViewOnly    = false
     // Per-vehicle track visibility
     private val vehicleTrackVisible = mutableMapOf<String, Boolean>()
+    // Lokal ausgeblendete Routen (client-seitig, wie im Web)
+    private val localHiddenRoutes = mutableSetOf<String>()
 
     // ── State ─────────────────────────────────────────────────────────────────
     private var collections = listOf<JSONObject>()
@@ -166,11 +174,14 @@ class MainActivity : AppCompatActivity() {
         updateCollectingUI()
         isViewOnly = AppPrefs.isViewOnly
         updateViewOnlyBanner()
+        // Kompass-Sensor reaktivieren falls er aktiv war
+        compassOverlay?.takeIf { it.isCompassEnabled }?.enableCompass()
     }
 
     override fun onPause() {
         super.onPause()
         map.onPause()
+        compassOverlay?.disableCompass()
         try { unregisterReceiver(locationReceiver) } catch (_: Exception) {}
         try { locationManager.removeUpdates(directLocationListener) } catch (_: Exception) {}
         pollJob?.cancel()
@@ -234,6 +245,8 @@ class MainActivity : AppCompatActivity() {
         tvCollectionStatus = findViewById(R.id.tv_collection_status)
         btnToggleTrack     = findViewById(R.id.btn_toggle_track)
         tvViewOnly         = findViewById(R.id.tv_view_only)
+        btnCompass         = findViewById(R.id.btn_compass)
+        btnCompass.setOnClickListener { toggleCompass() }
 
         tvVehicleName.text = AppPrefs.vehicleName
 
@@ -318,6 +331,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateViewOnlyBanner() {
         tvViewOnly.visibility = if (isViewOnly) View.VISIBLE else View.GONE
+        btnCollect.alpha = if (isViewOnly) 0.4f else 1.0f
+    }
+
+    private fun toggleCompass() {
+        val overlay = compassOverlay ?: return
+        if (overlay.isCompassEnabled) {
+            overlay.disableCompass()
+            map.mapOrientation = 0f  // Norden oben
+            btnCompass.setColorFilter(Color.parseColor("#7a9ab0"))
+        } else {
+            overlay.enableCompass()
+            btnCompass.setColorFilter(Color.parseColor("#00d4ff"))
+        }
+        map.invalidate()
     }
 
     private suspend fun performTakeover() {
@@ -401,6 +428,15 @@ class MainActivity : AppCompatActivity() {
         map.setMultiTouchControls(true)
         map.controller.setZoom(AppPrefs.lastMapZoom)
         map.controller.setCenter(GeoPoint(AppPrefs.lastMapLat, AppPrefs.lastMapLng))
+
+        // Zwei-Finger-Rotation (manuell)
+        val rotationGesture = RotationGestureOverlay(map)
+        rotationGesture.isEnabled = true
+        map.overlays.add(rotationGesture)
+
+        // Kompass-Overlay (Sensor-Ausrichtung, via Button togglebar)
+        compassOverlay = CompassOverlay(this, InternalCompassOrientationProvider(this), map)
+        map.overlays.add(compassOverlay!!)
 
         map.overlayManager.tilesOverlay.setColorFilter(
             android.graphics.ColorMatrixColorFilter(
@@ -750,7 +786,7 @@ class MainActivity : AppCompatActivity() {
         routePolylines.values.forEach { map.overlays.remove(it) }
         routePolylines.clear()
 
-        routes.filter { it.optBoolean("visible", true) }.forEach { route ->
+        routes.filter { it.optBoolean("visible", true) && !localHiddenRoutes.contains(it.optString("id")) }.forEach { route ->
             val coords = route.optJSONArray("coordinates") ?: return@forEach
             val driven = route.optJSONArray("driven_segments")
             val n = coords.length()
@@ -818,29 +854,89 @@ class MainActivity : AppCompatActivity() {
     // ── Sidebar ───────────────────────────────────────────────────────────────
     private fun renderRouteSidebar() {
         routeList.removeAllViews()
-        routes.forEach { r ->
-            val progress = r.optInt("progress", 0)
-            val color    = runCatching {
-                Color.parseColor(r.optString("color", "#00d4ff"))
-            }.getOrDefault(Color.CYAN)
+        val isAdmin = AppPrefs.userRole == "admin"
 
+        routes.forEach { r ->
+            val routeId  = r.optString("id")
+            val progress = r.optInt("progress", 0)
+            val status   = r.optString("status", "active")
+            val hidden   = localHiddenRoutes.contains(routeId)
+            val coords   = r.optJSONArray("coordinates")
+            val barColor = if (status == "completed") "#a8ff3e" else "#ff4444"
+
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 4, 0, 4)
+                alpha = if (hidden) 0.38f else 1.0f
+            }
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 4, 0, 4)
                 gravity = android.view.Gravity.CENTER_VERTICAL
             }
             val bar = View(this).apply {
-                setBackgroundColor(color)
-                layoutParams = LinearLayout.LayoutParams(4, 40)
-                    .apply { setMargins(0, 2, 8, 2) }
+                setBackgroundColor(Color.parseColor(barColor))
+                layoutParams = LinearLayout.LayoutParams(4, 40).apply { setMargins(0, 2, 8, 2) }
             }
             val tv = TextView(this).apply {
-                text     = "${r.optString("name")} — $progress%"
+                text = "${r.optString("name")} — $progress%"
                 setTextColor(Color.parseColor("#c8d4e0"))
-                textSize = 12f
+                textSize = 11f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            row.addView(bar); row.addView(tv)
-            routeList.addView(row)
+            // 🔍 Zur Route zoomen
+            val zoomBtn = TextView(this).apply {
+                text = "🔍"; textSize = 13f; setPadding(6, 0, 0, 0)
+                setTextColor(Color.parseColor(if (coords != null && coords.length() >= 2) "#c8d4e0" else "#4a5a6a"))
+                setOnClickListener {
+                    if (coords == null || coords.length() < 2) return@setOnClickListener
+                    val lats = mutableListOf<Double>(); val lngs = mutableListOf<Double>()
+                    for (i in 0 until coords.length()) {
+                        runCatching { val pt = coords.getJSONArray(i); lats.add(pt.getDouble(0)); lngs.add(pt.getDouble(1)) }
+                    }
+                    if (lats.isEmpty()) return@setOnClickListener
+                    followMode = false; updateFollowButton()
+                    map.zoomToBoundingBox(BoundingBox(lats.max(), lngs.max(), lats.min(), lngs.min()), true, 60)
+                }
+            }
+            // 👁 Sichtbarkeit umschalten (lokal)
+            val visBtn = TextView(this).apply {
+                text = if (hidden) "🚫" else "👁"; textSize = 13f; setPadding(6, 0, 0, 0)
+                setTextColor(Color.parseColor("#4a5a6a"))
+                setOnClickListener {
+                    if (localHiddenRoutes.contains(routeId)) localHiddenRoutes.remove(routeId)
+                    else localHiddenRoutes.add(routeId)
+                    renderRouteSidebar(); renderRoutes(); map.invalidate()
+                }
+            }
+            row.addView(bar); row.addView(tv); row.addView(zoomBtn); row.addView(visBtn)
+            // ↺ Reset (nur Admin)
+            if (isAdmin) {
+                val resetBtn = TextView(this).apply {
+                    text = "↺"; textSize = 13f; setPadding(6, 0, 0, 0)
+                    setTextColor(Color.parseColor("#ff6b35"))
+                    setOnClickListener {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Route zurücksetzen?")
+                            .setMessage("${r.optString("name")} wird zurückgesetzt.")
+                            .setPositiveButton("Zurücksetzen") { _, _ ->
+                                lifecycleScope.launch {
+                                    ApiClient.routeReset(routeId)
+                                    val cid = AppPrefs.activeCollectionId
+                                    if (cid.isNotEmpty()) {
+                                        val resp = ApiClient.getState(cid) ?: return@launch
+                                        val arr = resp.optJSONArray("routes") ?: return@launch
+                                        routes = (0 until arr.length()).map { arr.getJSONObject(it) }
+                                        runOnUiThread { renderRoutes(); renderRouteSidebar(); map.invalidate() }
+                                    }
+                                }
+                            }
+                            .setNegativeButton("Abbrechen", null).show()
+                    }
+                }
+                row.addView(resetBtn)
+            }
+            container.addView(row)
+            routeList.addView(container)
         }
     }
 
@@ -963,6 +1059,10 @@ class MainActivity : AppCompatActivity() {
 
     // ── Sammelmodus ───────────────────────────────────────────────────────────
     private fun toggleCollecting() {
+        if (isViewOnly) {
+            Toast.makeText(this, "⚠ View Only – Gerät zuerst übernehmen", Toast.LENGTH_SHORT).show()
+            return
+        }
         val tok = AppPrefs.vehicleToken
         if (tok.isEmpty()) {
             Toast.makeText(this, "Verbindung wird hergestellt…", Toast.LENGTH_SHORT).show()

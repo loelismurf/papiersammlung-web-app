@@ -243,4 +243,8 @@ object ApiClient {
     /** Fahrspur */
     suspend fun getTrack(token: String, collectionId: String): JSONObject? =
         get("vehicle_track", mapOf("token" to token, "collection_id" to collectionId))
+
+    /** Route zurücksetzen (nur Admin) */
+    suspend fun routeReset(routeId: String): JSONObject? =
+        post("route_reset", JSONObject().apply { put("route_id", routeId) })
 }

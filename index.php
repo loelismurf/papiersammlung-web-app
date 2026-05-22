@@ -121,6 +121,8 @@ select:focus{border-color:var(--accent)}
 .map-btn:hover{border-color:var(--accent)}
 #btn-follow{display:none;border-color:var(--accent);color:var(--accent)}
 #btn-follow.follow-off{border-color:var(--orange);color:var(--orange)}
+#btn-compass{display:block;border-color:var(--border2);color:var(--muted)}
+#btn-compass.compass-on{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.1)}
 
 /* ── Nicht-Sammeln-Warnung auf Karte ── */
 #no-collect-warn{
@@ -238,12 +240,6 @@ select:focus{border-color:var(--accent)}
           <button class="btn s" onclick="cancelRename()">✕</button>
         </div>
         <button id="btn-collect" class="off" onclick="toggleCollecting()">🔴 Nicht am Sammeln</button>
-        <!-- Push-Notification Status (nur sichtbar wenn relevant) -->
-        <div id="push-row" style="display:none;margin-top:5px;font-size:10px;font-family:var(--font-mono);color:var(--muted);align-items:center;gap:6px">
-          <span id="push-status-icon">🔔</span>
-          <span id="push-status-text">Hintergrund-Push inaktiv</span>
-          <button id="push-enable-btn" class="btn s" style="display:none;margin-left:auto" onclick="requestPushPermission()">Erlauben</button>
-        </div>
       </div>
     </div>
 
@@ -302,6 +298,7 @@ select:focus{border-color:var(--accent)}
     <button class="map-btn" id="btn-follow" title="Karte folgt GPS">🎯</button>
     <button class="map-btn" id="btn-locate" title="Zu meiner Position">📍</button>
     <button class="map-btn" id="btn-fit-all" title="Alle Routen">🗺</button>
+    <button class="map-btn" id="btn-compass" title="Kompass / Karte drehen" onclick="toggleCompass()">🧭</button>
   </div>
   <div id="legend">
     <div class="leg-row"><div class="leg-line" style="background:var(--green)"></div>Abgefahren</div>
@@ -318,6 +315,7 @@ select:focus{border-color:var(--accent)}
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
 <script>
 const API        = 'api.php';
 const IS_ADMIN   = <?= $is_admin ? 'true' : 'false' ?>;
@@ -589,7 +587,7 @@ if ('serviceWorker' in navigator) {
     })
     .catch(() => {});
   navigator.serviceWorker.addEventListener('message', e => {
-    if (e.data?.type === 'REQUEST_GPS' && myLat !== null && isJoined) sendGPS(myLat, myLng);
+    if (e.data?.type === 'REQUEST_GPS' && myLat !== null && isJoined) sendGPS(myLat, myLng, true);
   });
 }
 
@@ -601,7 +599,7 @@ function startBgPageTimer() {
   if (bgPageTimer) return;
   bgPageTimer = setInterval(() => {
     if (myLat !== null && isJoined && Date.now() - lastGpsSentAt > 8000) {
-      sendGPS(myLat, myLng);
+      sendGPS(myLat, myLng, true); // force=true: Keepalive auch bei Stillstand
     }
   }, 6000);
 }
@@ -685,8 +683,23 @@ function urlB64ToUint8Array(b64) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
-function sendGPS(lat, lng) {
+// ── GPS-Filterung: Ausreisser + Mindestdistanz ────────────────────────────────
+let gpsFilterLat = null, gpsFilterLng = null, gpsFilterTime = 0;
+const GPS_MIN_SEND_M   = 8;   // Mindestdistanz (m) vor erneutem Senden
+const GPS_MAX_JUMP_M   = 250; // Ausreisser-Grenze (m)
+const GPS_MAX_SPEED_MS = 55;  // Max-Geschw. (m/s ≈ 200 km/h)
+
+function sendGPS(lat, lng, force = false) {
   if (isViewOnly) return; // View-Only: kein GPS senden
+  // Filterung: Ausreisser und Kleinstbewegungen abfangen
+  if (gpsFilterLat !== null) {
+    const d  = distM(gpsFilterLat, gpsFilterLng, lat, lng);
+    const dt = (Date.now() - gpsFilterTime) / 1000;
+    if (d > GPS_MAX_JUMP_M) return;                    // Ausreisser: Sprung zu gross
+    if (dt > 0 && d / dt > GPS_MAX_SPEED_MS) return;  // Ausreisser: unrealistische Geschw.
+    if (!force && d < GPS_MIN_SEND_M) return;          // Nicht genug bewegt
+  }
+  gpsFilterLat = lat; gpsFilterLng = lng; gpsFilterTime = Date.now();
   lastGpsSentAt = Date.now();
   const payload = { token:myToken, lat, lng, collection_id:currentColId, speed:mySpeed, device_id:myDeviceId };
   const c = vehicleSnap[myToken];
@@ -718,9 +731,50 @@ function sendGPS(lat, lng) {
 }
 
 // ── Map ───────────────────────────────────────────────────────────────────────
-const map=L.map('map',{center:[47.3769,8.5417],zoom:13,zoomControl:false});
+const map=L.map('map',{center:[47.3769,8.5417],zoom:13,zoomControl:false,rotate:true,bearing:0});
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
 L.control.zoom({position:'bottomleft'}).addTo(map);
+
+// ── Kompass / Karten-Rotation ─────────────────────────────────────────────────
+let compassMode = false;
+function toggleCompass() {
+  compassMode = !compassMode;
+  const btn = document.getElementById('btn-compass');
+  btn.classList.toggle('compass-on', compassMode);
+  if (compassMode) {
+    // iOS 13+ braucht explizite Permission für DeviceOrientationEvent
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(p => {
+          if (p === 'granted') startCompass();
+          else { compassMode = false; btn.classList.remove('compass-on'); notify('Kompass-Zugriff verweigert','w'); }
+        }).catch(() => { compassMode = false; btn.classList.remove('compass-on'); });
+    } else {
+      startCompass();
+    }
+  } else {
+    stopCompass();
+  }
+}
+function startCompass() {
+  window.addEventListener('deviceorientationabsolute', onCompassEvent, true);
+  window.addEventListener('deviceorientation', onCompassEvent, true);
+}
+function stopCompass() {
+  window.removeEventListener('deviceorientationabsolute', onCompassEvent, true);
+  window.removeEventListener('deviceorientation', onCompassEvent, true);
+  if (typeof map.setBearing === 'function') map.setBearing(0);
+}
+function onCompassEvent(e) {
+  if (!compassMode || typeof map.setBearing !== 'function') return;
+  // iOS: webkitCompassHeading = Grad von magnetisch Nord (im Uhrzeigersinn)
+  // Android/Desktop: alpha = Grad gegen Uhrzeigersinn von Nord → invertieren
+  const hdg = e.webkitCompassHeading != null
+    ? e.webkitCompassHeading
+    : (360 - (e.alpha || 0)) % 360;
+  map.setBearing(hdg);
+}
 
 // ── Follow-Modus ──────────────────────────────────────────────────────────────
 let followMode = true; // Karte folgt automatisch der eigenen GPS-Position
@@ -851,6 +905,8 @@ async function takeoverDevice() {
 function updateViewOnlyBanner() {
   const b=document.getElementById('view-only-banner');
   if(b) b.style.display=isViewOnly?'flex':'none';
+  const btn=document.getElementById('btn-collect');
+  if(btn){btn.style.opacity=isViewOnly?'0.4':'';btn.style.pointerEvents=isViewOnly?'none':'';}
 }
 
 // ── Sammelmodus ───────────────────────────────────────────────────────────────
@@ -864,15 +920,14 @@ function updateCollectingUI(){
 
 async function toggleCollecting(){
   if(!myToken)return;
+  if(isViewOnly){notify('⚠ Gerät ist inaktiv – zuerst übernehmen','w');return;}
   const r=await api('vehicle_set_collecting',{token:myToken,collecting:!isCollecting});
   if(r.error){notify(r.error,'w');return;}
   isCollecting=r.collecting; setMyStatus(r.status||'idle'); updateCollectingUI();
   updateSelfMarker(); // Tooltip aktualisieren
   if(isCollecting){
     notify('🟢 Sammelmodus aktiviert – GPS wird aufgezeichnet','g');
-    if(isIOS) notify('📱 iOS: App offen lassen – Hintergrund-GPS nicht möglich.','w');
     await requestWakeLock();
-    updatePushStatus();
     // Eigene Fahrspur automatisch anzeigen beim Start des Sammelns
     if(myToken && !trackVisible[myToken]){ trackVisible[myToken]=true; loadTrack(myToken); }
   } else {

@@ -245,6 +245,23 @@
         android:layout_marginTop="8dp" />
 
     <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- KOMPASS-BUTTON — Karte nach Geräteausrichtung drehen                 -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <ImageButton
+        android:id="@+id/btn_compass"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:src="@android:drawable/ic_menu_compass"
+        android:background="#E60f1216"
+        android:tint="#7a9ab0"
+        android:elevation="6dp"
+        android:contentDescription="Kompass / Karte drehen"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginEnd="14dp"
+        android:layout_marginBottom="156dp" />
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
     <!-- FOLLOW-BUTTON                                                        -->
     <!-- ════════════════════════════════════════════════════════════════════ -->
     <ImageButton

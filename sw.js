@@ -39,17 +39,6 @@ self.addEventListener('message', event => {
                 sendGpsToApi(lastGpsData);
             }
         }, 5000);
-
-        // Notification nur wenn Berechtigung da – kein Fehler wenn nicht
-        self.registration.showNotification('Papiersammlung – GPS aktiv', {
-            body: '📍 GPS-Tracking läuft im Hintergrund. Antippen zum Öffnen.',
-            icon: '/favicon.png',
-            badge: '/favicon.png',
-            tag: 'gps-bg',
-            requireInteraction: true,
-            silent: true,
-            vibrate: [],
-        }).catch(() => {});
     }
 
     if (type === 'BG_STOP') {

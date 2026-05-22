@@ -50,6 +50,9 @@ class GpsService : Service() {
         private const val GPS_INTERVAL_COLLECTING_MS = 3_000L
         private const val GPS_INTERVAL_IDLE_MS       = 30_000L
         private const val GPS_MIN_DISTANCE_M         = 2f
+        private const val GPS_MAX_JUMP_M             = 300.0  // Ausreisser-Schwelle in Metern
+        private const val GPS_MAX_SPEED_MS           = 60.0   // Max. Geschw. m/s ≈ 216 km/h
+        private const val GPS_MIN_SEND_M             = 5.0    // Mindest-Distanz vor Senden
     }
 
     private lateinit var locationManager: LocationManager
@@ -61,6 +64,11 @@ class GpsService : Service() {
     private var lastLng        = 0.0
     private var lastSpeed: Double? = null
     private var isRunning      = false
+
+    // GPS-Filterung: zuletzt gesendete Position + Zeitstempel
+    private var lastSentLat    = 0.0
+    private var lastSentLng    = 0.0
+    private var lastSentTimeMs = 0L
 
     @Volatile private var bufferedCount = 0L
 
@@ -173,6 +181,7 @@ class GpsService : Service() {
 
     // ── GPS-Punkt verarbeiten ─────────────────────────────────────────────────
     private fun onGpsUpdate(loc: Location) {
+        // Immer broadcasten – für lokale Karten-Anzeige in MainActivity
         sendLocationBroadcast(loc.latitude, loc.longitude,
             if (loc.hasSpeed()) loc.speed.toDouble() else null)
 
@@ -182,21 +191,53 @@ class GpsService : Service() {
 
         scope.launch {
             if (AppPrefs.isViewOnly) { updateNotification(); return@launch }
+
+            val lat = loc.latitude; val lng = loc.longitude
+
+            // GPS-Qualitätsprüfung: Ausreisser abfangen
+            if (isGpsOutlier(lat, lng)) { updateNotification(); return@launch }
+
+            // Mindest-Distanz: nur senden wenn genug bewegt
+            val distSinceLast = if (lastSentLat != 0.0)
+                haversineM(lastSentLat, lastSentLng, lat, lng) else Double.MAX_VALUE
+            if (distSinceLast < GPS_MIN_SEND_M) { updateNotification(); return@launch }
+
+            lastSentLat = lat; lastSentLng = lng; lastSentTimeMs = System.currentTimeMillis()
+
             if (ApiClient.isOnline()) {
-                val result = ApiClient.sendPosition(token, loc.latitude, loc.longitude,
+                val result = ApiClient.sendPosition(token, lat, lng,
                     if (loc.hasSpeed()) loc.speed.toDouble() else null, cid,
                     deviceId = AppPrefs.deviceId)
                 if (result == null && AppPrefs.isCollecting) {
-                    offlineBuffer.buffer(token, cid, loc.latitude, loc.longitude,
+                    offlineBuffer.buffer(token, cid, lat, lng,
                         if (loc.hasSpeed()) loc.speed.toDouble() else null)
                 }
             } else if (AppPrefs.isCollecting) {
-                offlineBuffer.buffer(token, cid, loc.latitude, loc.longitude,
+                offlineBuffer.buffer(token, cid, lat, lng,
                     if (loc.hasSpeed()) loc.speed.toDouble() else null)
             }
             bufferedCount = offlineBuffer.count()
             updateNotification()
         }
+    }
+
+    private fun haversineM(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val R = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLng = Math.toRadians(lng2 - lng1)
+        val sinDLat = Math.sin(dLat / 2); val sinDLng = Math.sin(dLng / 2)
+        val a = sinDLat * sinDLat +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * sinDLng * sinDLng
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    }
+
+    private fun isGpsOutlier(lat: Double, lng: Double): Boolean {
+        if (lastSentLat == 0.0 && lastSentLng == 0.0) return false
+        val dist = haversineM(lastSentLat, lastSentLng, lat, lng)
+        if (dist < 2.0) return false    // Stillstand – kein Ausreisser
+        val elapsedSec = (System.currentTimeMillis() - lastSentTimeMs) / 1000.0
+        if (elapsedSec <= 0) return false
+        return dist / elapsedSec > GPS_MAX_SPEED_MS || dist > GPS_MAX_JUMP_M
     }
 
     /**
@@ -252,6 +293,11 @@ class GpsService : Service() {
         val openApp = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
         )
+        val stopIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, GpsService::class.java).apply { action = ACTION_STOP },
+            PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, PapiersammlungApp.CHANNEL_GPS)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentTitle(if (AppPrefs.isCollecting) "🟢 Am Sammeln" else "○ GPS bereit")
@@ -260,6 +306,7 @@ class GpsService : Service() {
             .setOngoing(true)
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "GPS stoppen", stopIntent)
             .build()
     }
 
