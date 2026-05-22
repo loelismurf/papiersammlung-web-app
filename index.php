@@ -350,11 +350,13 @@ let routes = [], vehicles = [];
 const routeLayers = {}, vehicleMarkers = {}, vehicleMarkerProps = {};
 
 // ── Fahrspur pro Fahrzeug ─────────────────────────────────────────────────────
-const trackLayers        = {};  // token → Leaflet polyline
-const trackVisible       = {};  // token → bool
-const trackLoading       = new Set();
-const trackAnalysisLayers = {}; // token → array of stop/speed map layers
-let   showAllTracks      = false;
+const trackLayers         = {};  // token → Leaflet polyline
+const trackVisible        = {};  // token → bool
+const trackLoading        = new Set();
+const trackPtsCache       = {};  // token → raw pts array (with speed)
+const trackAnalysisLayers = {};  // token → array of stop/speed map layers
+const trackAnalysisVisible= {};  // token → bool
+let   showAllTracks       = false;
 
 function clearTrackAnalysis(token) {
   if (trackAnalysisLayers[token]) {
@@ -429,15 +431,18 @@ async function loadTrack(token) {
     if (pts.length > 1) {
       if (trackLayers[token]) map.removeLayer(trackLayers[token]);
       clearTrackAnalysis(token);
+      trackPtsCache[token] = pts;
       const veh = vehicles.find(v=>v.token===token);
       const col = veh?.token===myToken ? '#ffd700' : (veh?.collecting ? '#00d4ff' : '#4a5a6a');
       trackLayers[token] = L.polyline(pts.map(p=>[p[0],p[1]]), {
         color: col, weight:3, opacity:0.65, dashArray:'6,4', lineCap:'round'
       }).addTo(map);
-      renderTrackAnalysis(token, pts);
+      // Re-render analysis if it was already on for this token
+      if (trackAnalysisVisible[token]) renderTrackAnalysis(token, pts);
     }
   } catch(e){}
   trackLoading.delete(token);
+  renderVehicleList();
 }
 function toggleTrack(token) {
   trackVisible[token] = !trackVisible[token];
@@ -446,6 +451,20 @@ function toggleTrack(token) {
   } else {
     if (trackLayers[token]) { map.removeLayer(trackLayers[token]); delete trackLayers[token]; }
     clearTrackAnalysis(token);
+    delete trackPtsCache[token];
+    delete trackAnalysisVisible[token];
+    renderVehicleList();
+  }
+}
+function toggleTrackAnalysis(token) {
+  const wasOn = trackAnalysisVisible[token] || false;
+  if (wasOn) {
+    clearTrackAnalysis(token);
+    delete trackAnalysisVisible[token];
+  } else {
+    trackAnalysisVisible[token] = true;
+    const pts = trackPtsCache[token];
+    if (pts) renderTrackAnalysis(token, pts);
   }
   renderVehicleList();
 }
@@ -459,10 +478,12 @@ function toggleAllTracks() {
         trackVisible[v.token]=false;
         if(trackLayers[v.token]){map.removeLayer(trackLayers[v.token]);delete trackLayers[v.token];}
         clearTrackAnalysis(v.token);
+        delete trackPtsCache[v.token];
+        delete trackAnalysisVisible[v.token];
       }
     });
+    renderVehicleList();
   }
-  renderVehicleList();
 }
 // Sichtbare Tracks alle 10s neu laden (neue Punkte)
 let trackRefreshCounter = 0;
@@ -888,7 +909,7 @@ async function pollState(){
   }catch(e){document.getElementById('pt').textContent='Fehler';}
   maybeRefreshTracks();
   // Vehicle-Ping: last_seen aktualisieren + View-Only-Status prüfen
-  if(myToken) fetch(`${API}?action=vehicle_ping`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:myToken,device_id:myDeviceId}),keepalive:true})
+  if(myToken) fetch(`${API}?action=vehicle_ping`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:myToken,device_id:myDeviceId,collection_id:currentColId||''}),keepalive:true})
     .then(r=>r.json()).then(pingResp=>{
       if(pingResp && typeof pingResp.view_only==='boolean') {
         const wasViewOnly=isViewOnly;
@@ -1099,6 +1120,7 @@ function renderVehicleList(){
         <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">${v.active_route_id?(rm[v.active_route_id]||'—'):'—'}</div>
       </div>
       <span class="vi-track${trackOn?' on':''}" onclick="toggleTrack('${v.token}')" title="Fahrspur ein/aus">🛣</span>
+      ${trackOn?`<span class="vi-track${trackAnalysisVisible[v.token]?' on':''}" onclick="toggleTrackAnalysis('${v.token}')" title="Halte &amp; Geschwindigkeit">📊</span>`:''}
       <span class="vi-eye" onclick="toggleVehicle('${v.token}')">${vis?'👁':'○'}</span>
     </div>`;
   }).join('');

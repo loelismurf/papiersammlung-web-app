@@ -219,10 +219,11 @@ object ApiClient {
         })
 
     /** Ping */
-    suspend fun ping(token: String, deviceId: String = ""): JSONObject? =
+    suspend fun ping(token: String, deviceId: String = "", collectionId: String = ""): JSONObject? =
         post("vehicle_ping", JSONObject().apply {
             put("token", token)
             if (deviceId.isNotEmpty()) put("device_id", deviceId)
+            if (collectionId.isNotEmpty()) put("collection_id", collectionId)
         })
 
     /** Aktives Gerät übernehmen */

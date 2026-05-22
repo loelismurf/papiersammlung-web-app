@@ -426,8 +426,13 @@ try {
     case 'vehicle_ping':
         $token    = $data['token'] ?? '';
         $deviceId = trim($data['device_id'] ?? '');
+        $pingCid  = $data['collection_id'] ?? '';
         if (!$token) error_response('Token fehlt');
-        db_run("UPDATE vehicles SET last_seen=NOW() WHERE token=?", [$token]);
+        if ($pingCid) {
+            db_run("UPDATE vehicles SET last_seen=NOW(), active_collection_id=? WHERE token=?", [$pingCid, $token]);
+        } else {
+            db_run("UPDATE vehicles SET last_seen=NOW() WHERE token=?", [$token]);
+        }
         $viewOnly = false;
         if ($deviceId) {
             $pv = db_row("SELECT active_device_id, status FROM vehicles WHERE token=?", [$token]);

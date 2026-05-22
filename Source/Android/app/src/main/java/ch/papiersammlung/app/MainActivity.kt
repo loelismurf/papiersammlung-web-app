@@ -591,7 +591,7 @@ class MainActivity : AppCompatActivity() {
 
         val tok = AppPrefs.vehicleToken
         if (tok.isNotEmpty()) lifecycleScope.launch {
-            val pingResp = ApiClient.ping(tok, AppPrefs.deviceId)
+            val pingResp = ApiClient.ping(tok, AppPrefs.deviceId, cid)
             if (pingResp != null && pingResp.has("view_only")) {
                 val newViewOnly = pingResp.optBoolean("view_only", false)
                 val wasViewOnly = isViewOnly
