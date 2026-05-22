@@ -329,8 +329,7 @@ Same behavior using `btn_follow`.
 When modifying schema:
 1. Update migration logic
 2. Update `tmp/install.php`
-3. Preserve backward compatibility
-4. Avoid unsupported MySQL functions
+3. Avoid unsupported MySQL functions
 
 ## GPS Logic
 Always preserve:

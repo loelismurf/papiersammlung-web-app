@@ -228,24 +228,47 @@ try {
     // ── FAHRZEUG ─────────────────────────────────────────────────────────────
 
     case 'vehicle_join':
-        $name = trim($data['name'] ?? '');
-        $cid  = $data['collection_id'] ?? null;
+        $name     = trim($data['name'] ?? '');
+        $cid      = $data['collection_id'] ?? null;
+        $deviceId = trim($data['device_id'] ?? '');
         $existing = db_row("SELECT * FROM vehicles WHERE user_id=?", [$user_id]);
         if ($existing) {
-            $token = $existing['token'];
-            if ($name && $name !== $existing['name']) {
-                db_run("UPDATE vehicles SET name=?, active_collection_id=?, last_seen=NOW() WHERE token=?",[$name,$cid,$token]);
-                $existing['name'] = $name;
-            } else {
-                db_run("UPDATE vehicles SET active_collection_id=?, last_seen=NOW() WHERE token=?",[$cid,$token]);
+            $token    = $existing['token'];
+            $viewOnly = false;
+            $conflict = false;
+            // Multi-device: check if another device is currently active
+            if ($deviceId && $existing['active_device_id']
+                && $existing['active_device_id'] !== $deviceId
+                && $existing['status'] !== 'offline') {
+                $conflict = true;
+                $viewOnly = true;
+            } elseif ($deviceId) {
+                db_run("UPDATE vehicles SET active_device_id=? WHERE token=?", [$deviceId, $token]);
             }
-            json_response(['token'=>$token,'name'=>$existing['name'],'status'=>$existing['status'],'collecting'=>(bool)($existing['collecting']??false)]);
+            // Fix: always reset status on join (prevents stale 'offline' in response)
+            $newStatus = ($existing['collecting'] ? 'driving' : 'idle');
+            if (!$viewOnly) {
+                if ($name && $name !== $existing['name']) {
+                    db_run("UPDATE vehicles SET name=?, status=?, active_collection_id=?, last_seen=NOW() WHERE token=?",
+                           [$name,$newStatus,$cid,$token]);
+                    $existing['name'] = $name;
+                } else {
+                    db_run("UPDATE vehicles SET status=?, active_collection_id=?, last_seen=NOW() WHERE token=?",
+                           [$newStatus,$cid,$token]);
+                }
+            } else {
+                db_run("UPDATE vehicles SET last_seen=NOW() WHERE token=?", [$token]);
+                $newStatus = $existing['status'];
+            }
+            json_response(['token'=>$token,'name'=>$existing['name'],'status'=>$newStatus,
+                          'collecting'=>(bool)($existing['collecting']??false),
+                          'view_only'=>$viewOnly,'conflict'=>$conflict]);
         } else {
             if (!$name) { $u=db_row("SELECT username FROM users WHERE id=?",[$user_id]); $name=$u['username']??'Fahrzeug'; }
             $token = bin2hex(random_bytes(32));
-            db_run("INSERT INTO vehicles (token,name,user_id,status,active_collection_id,last_seen) VALUES (?,?,?,'idle',?,NOW())",
-                   [$token,$name,$user_id,$cid]);
-            json_response(['token'=>$token,'name'=>$name,'status'=>'idle','collecting'=>false]);
+            db_run("INSERT INTO vehicles (token,name,user_id,status,active_collection_id,active_device_id,last_seen) VALUES (?,?,?,'idle',?,?,NOW())",
+                   [$token,$name,$user_id,$cid,$deviceId?:null]);
+            json_response(['token'=>$token,'name'=>$name,'status'=>'idle','collecting'=>false,'view_only'=>false,'conflict'=>false]);
         }
 
     case 'vehicle_rename':
@@ -278,6 +301,14 @@ try {
         if (!$token) error_response('Token fehlt');
 
         $v = db_row("SELECT * FROM vehicles WHERE token=?", [$token]);
+
+        // Multi-device: reject GPS from inactive (view-only) device
+        $posDeviceId = $data['device_id'] ?? '';
+        if ($posDeviceId && $v && !empty($v['active_device_id'])
+            && $v['active_device_id'] !== $posDeviceId
+            && ($v['status'] ?? '') !== 'offline') {
+            json_response(['ok'=>false,'view_only'=>true]);
+        }
 
         if ($cid) db_run("UPDATE vehicles SET lat=?,lng=?,active_collection_id=?,last_seen=NOW() WHERE token=?",[$lat,$lng,$cid,$token]);
         else      db_run("UPDATE vehicles SET lat=?,lng=?,last_seen=NOW() WHERE token=?",[$lat,$lng,$token]);
@@ -364,7 +395,11 @@ try {
                          ORDER BY recorded_at DESC LIMIT 800",
                         [$token,$cid]);
         $rows = array_reverse($rows); // chronologisch
-        $points = array_map(fn($r)=>[(float)$r['lat'],(float)$r['lng']],$rows);
+        $points = array_map(fn($r)=>[
+            (float)$r['lat'],
+            (float)$r['lng'],
+            $r['speed'] !== null ? (float)$r['speed'] : null
+        ], $rows);
         $latestTime = !empty($rows) ? end($rows)['recorded_at'] : null;
         json_response(['points'=>$points,'count'=>count($points),'latest_at'=>$latestTime]);
 
@@ -379,11 +414,29 @@ try {
         json_response(['ok'=>true]);
 
     // ── Vehicle Ping: last_seen aktualisieren (idle Fahrzeuge bleiben sichtbar) ─
+    case 'vehicle_takeover':
+        $token    = $data['token'] ?? '';
+        $deviceId = trim($data['device_id'] ?? '');
+        if (!$token || !$deviceId) error_response('Token oder device_id fehlt');
+        $v = db_row("SELECT user_id FROM vehicles WHERE token=?", [$token]);
+        if (!$v || (int)$v['user_id'] !== $user_id) error_response('Kein Zugriff', 403);
+        db_run("UPDATE vehicles SET active_device_id=?, status='idle', last_seen=NOW() WHERE token=?", [$deviceId, $token]);
+        json_response(['ok'=>true,'view_only'=>false]);
+
     case 'vehicle_ping':
-        $token = $data['token'] ?? '';
+        $token    = $data['token'] ?? '';
+        $deviceId = trim($data['device_id'] ?? '');
         if (!$token) error_response('Token fehlt');
         db_run("UPDATE vehicles SET last_seen=NOW() WHERE token=?", [$token]);
-        json_response(['ok'=>true,'ts'=>date('c')]);
+        $viewOnly = false;
+        if ($deviceId) {
+            $pv = db_row("SELECT active_device_id, status FROM vehicles WHERE token=?", [$token]);
+            if ($pv && !empty($pv['active_device_id']) && $pv['active_device_id'] !== $deviceId
+                && ($pv['status'] ?? '') !== 'offline') {
+                $viewOnly = true;
+            }
+        }
+        json_response(['ok'=>true,'ts'=>date('c'),'view_only'=>$viewOnly]);
 
     case 'route_toggle':
         if (!$admin) error_response('Kein Zugriff', 403);

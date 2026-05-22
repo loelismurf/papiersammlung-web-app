@@ -107,6 +107,7 @@ try {
             'active_collection_id' => 'VARCHAR(32) DEFAULT NULL',
             'active_route_id'      => 'VARCHAR(32) DEFAULT NULL',
             'collecting'           => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'active_device_id'     => 'VARCHAR(64) DEFAULT NULL',
         ],
     ];
 

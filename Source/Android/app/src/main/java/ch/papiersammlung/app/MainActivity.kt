@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnFollow: ImageButton
     private lateinit var tvCollectionStatus: TextView
     private lateinit var btnToggleTrack: ImageButton
+    private lateinit var tvViewOnly: TextView
 
     // ── System Services ───────────────────────────────────────────────────────
     private lateinit var locationManager: LocationManager
@@ -71,7 +72,9 @@ class MainActivity : AppCompatActivity() {
     private var followMode    = true
     private var firstGpsFix   = true
     private var sidebarVisible = true
-    private var showVehicleTrack = false
+    private var isViewOnly    = false
+    // Per-vehicle track visibility
+    private val vehicleTrackVisible = mutableMapOf<String, Boolean>()
 
     // ── State ─────────────────────────────────────────────────────────────────
     private var collections = listOf<JSONObject>()
@@ -161,6 +164,8 @@ class MainActivity : AppCompatActivity() {
         }
         updateBufferCount()
         updateCollectingUI()
+        isViewOnly = AppPrefs.isViewOnly
+        updateViewOnlyBanner()
     }
 
     override fun onPause() {
@@ -228,6 +233,7 @@ class MainActivity : AppCompatActivity() {
         btnFollow          = findViewById(R.id.btn_follow)
         tvCollectionStatus = findViewById(R.id.tv_collection_status)
         btnToggleTrack     = findViewById(R.id.btn_toggle_track)
+        tvViewOnly         = findViewById(R.id.tv_view_only)
 
         tvVehicleName.text = AppPrefs.vehicleName
 
@@ -239,9 +245,16 @@ class MainActivity : AppCompatActivity() {
         btnFollow.setOnClickListener { centerOnCurrentPosition() }
         updateFollowButton()
 
-        // Fahrspur-Toggle
-        btnToggleTrack.setOnClickListener { toggleVehicleTrack() }
+        // Fahrspur-Toggle (alle Fahrzeuge)
+        btnToggleTrack.setOnClickListener { toggleAllTracks() }
         updateTrackButton()
+
+        // View-Only-Banner: Antippen zum Übernehmen
+        tvViewOnly.setOnClickListener {
+            if (isViewOnly) lifecycleScope.launch { performTakeover() }
+        }
+        isViewOnly = AppPrefs.isViewOnly
+        updateViewOnlyBanner()
 
         map.setOnTouchListener { _, ev ->
             if (followMode && ev.action == MotionEvent.ACTION_MOVE) {
@@ -262,27 +275,70 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun toggleVehicleTrack() {
-        showVehicleTrack = !showVehicleTrack
-        updateTrackButton()
-        if (showVehicleTrack) {
-            lifecycleScope.launch { loadVehicleTracks() }
+    private fun toggleVehicleTrack(token: String) {
+        val current = vehicleTrackVisible[token] ?: false
+        vehicleTrackVisible[token] = !current
+        if (vehicleTrackVisible[token] == true) {
+            lifecycleScope.launch { loadVehicleTrack(token) }
         } else {
-            clearVehicleTracks()
+            val poly = trackPolylines.remove(token)
+            poly?.let { map.overlays.remove(it) }
+            map.invalidate()
         }
+        renderVehicleSidebar()
+        updateTrackButton()
+    }
+
+    private fun toggleAllTracks() {
+        val anyVisible = vehicleTrackVisible.values.any { it }
+        if (anyVisible) {
+            vehicleTrackVisible.clear()
+            trackPolylines.values.forEach { map.overlays.remove(it) }
+            trackPolylines.clear()
+            map.invalidate()
+        } else {
+            vehicles.forEach { v ->
+                val token = v.optString("token")
+                if (token.isNotEmpty()) {
+                    vehicleTrackVisible[token] = true
+                    lifecycleScope.launch { loadVehicleTrack(token) }
+                }
+            }
+        }
+        renderVehicleSidebar()
+        updateTrackButton()
     }
 
     private fun updateTrackButton() {
+        val anyVisible = vehicleTrackVisible.values.any { it }
         btnToggleTrack.setColorFilter(
-            Color.parseColor(if (showVehicleTrack) "#ffd700" else "#7a9ab0")
+            Color.parseColor(if (anyVisible) "#ffd700" else "#7a9ab0")
         )
+    }
+
+    private fun updateViewOnlyBanner() {
+        tvViewOnly.visibility = if (isViewOnly) View.VISIBLE else View.GONE
+    }
+
+    private suspend fun performTakeover() {
+        val token = AppPrefs.vehicleToken
+        if (token.isEmpty()) return
+        val resp = ApiClient.takeoverDevice(token, AppPrefs.deviceId)
+        if (resp?.optBoolean("ok") == true) {
+            isViewOnly = false
+            AppPrefs.isViewOnly = false
+            runOnUiThread {
+                updateViewOnlyBanner()
+                Toast.makeText(this, "✅ Dieses Gerät ist jetzt aktiv", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun centerOnCurrentPosition() {
         val pos = selfMarker?.position
         if (pos != null) {
             map.controller.animateTo(pos)
-            map.controller.setZoom(16.0)
+            map.controller.setZoom(18.0)
             followMode = true
             updateFollowButton()
             return
@@ -448,7 +504,7 @@ class MainActivity : AppCompatActivity() {
             btnCollect.isEnabled = false
         }
 
-        val resp = ApiClient.vehicleJoin(AppPrefs.vehicleName, collectionId)
+        val resp = ApiClient.vehicleJoin(AppPrefs.vehicleName, collectionId, AppPrefs.deviceId)
         isJoining = false
 
         if (resp == null) {
@@ -478,10 +534,38 @@ class MainActivity : AppCompatActivity() {
         val serverName = resp.optString("name", "")
         if (serverName.isNotEmpty()) AppPrefs.vehicleName = serverName
 
+        val conflict  = resp.optBoolean("conflict", false)
+        val viewOnly  = resp.optBoolean("view_only", false)
+
+        if (conflict) {
+            runOnUiThread {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("⚠ Anderes Gerät aktiv")
+                    .setMessage(
+                        "Ein anderes Gerät sendet bereits GPS für dieses Fahrzeug.\n\n" +
+                        "Dieses Gerät übernehmen? Das andere Gerät wird auf \"Nur Anzeigen\" gesetzt."
+                    )
+                    .setPositiveButton("Übernehmen") { _, _ ->
+                        lifecycleScope.launch { performTakeover() }
+                    }
+                    .setNegativeButton("Nur Anzeigen") { _, _ ->
+                        isViewOnly = true
+                        AppPrefs.isViewOnly = true
+                        updateViewOnlyBanner()
+                    }
+                    .setCancelable(false)
+                    .show()
+            }
+        } else {
+            isViewOnly = viewOnly
+            AppPrefs.isViewOnly = viewOnly
+        }
+
         runOnUiThread {
             tvVehicleName.text = AppPrefs.vehicleName
-            btnCollect.isEnabled = true
+            btnCollect.isEnabled = !isViewOnly
             updateCollectingUI()
+            updateViewOnlyBanner()
         }
 
         startPolling()
@@ -506,7 +590,25 @@ class MainActivity : AppCompatActivity() {
         val resp = ApiClient.getState(cid) ?: return
 
         val tok = AppPrefs.vehicleToken
-        if (tok.isNotEmpty()) lifecycleScope.launch { ApiClient.ping(tok) }
+        if (tok.isNotEmpty()) lifecycleScope.launch {
+            val pingResp = ApiClient.ping(tok, AppPrefs.deviceId)
+            if (pingResp != null && pingResp.has("view_only")) {
+                val newViewOnly = pingResp.optBoolean("view_only", false)
+                val wasViewOnly = isViewOnly
+                if (newViewOnly != wasViewOnly) {
+                    isViewOnly = newViewOnly
+                    AppPrefs.isViewOnly = newViewOnly
+                    runOnUiThread {
+                        updateViewOnlyBanner()
+                        btnCollect.isEnabled = !isViewOnly
+                        if (!wasViewOnly && isViewOnly)
+                            Toast.makeText(this@MainActivity, "⚠ Dieses Gerät ist jetzt inaktiv", Toast.LENGTH_SHORT).show()
+                    }
+                    // Auto-Übernahme wenn altes Gerät offline ging
+                    if (wasViewOnly && !newViewOnly) performTakeover()
+                }
+            }
+        }
 
         val routesArr   = resp.optJSONArray("routes")  ?: return
         val vehiclesArr = resp.optJSONArray("vehicles") ?: JSONArray()
@@ -524,71 +626,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Vehicle Track Polling ──────────────────────────────────────────────────
+    // ── Vehicle Track Polling (pro Fahrzeug) ───────────────────────────────────
     private fun startTrackPolling() {
         trackJob?.cancel()
-        val tok = AppPrefs.vehicleToken
         val cid = AppPrefs.activeCollectionId
-        if (tok.isEmpty() || cid.isEmpty()) return
+        if (cid.isEmpty()) return
 
         trackJob = lifecycleScope.launch {
             while (isActive) {
-                if (showVehicleTrack) {
-                    loadVehicleTracks()
+                vehicleTrackVisible.filter { it.value }.keys.toList().forEach { token ->
+                    launch { loadVehicleTrack(token) }
                 }
-                delay(5000)   // Fahrspur alle 5 Sekunden aktualisieren
+                delay(5000)
             }
         }
     }
 
-    private suspend fun loadVehicleTracks() {
-        val tok = AppPrefs.vehicleToken
+    private suspend fun loadVehicleTrack(token: String) {
         val cid = AppPrefs.activeCollectionId
-        if (tok.isEmpty() || cid.isEmpty()) return
+        if (token.isEmpty() || cid.isEmpty()) return
+        val trackResp = ApiClient.getTrack(token, cid) ?: return
 
-        val trackResp = ApiClient.getTrack(tok, cid) ?: return
-
-        runOnUiThread {
-            renderVehicleTrack(trackResp)
-            map.invalidate()
-        }
-    }
-
-    private fun renderVehicleTrack(trackResp: JSONObject) {
-        clearVehicleTracks()
-
-        // Track kann verschiedene Formate haben:
-        // 1) {"points": [[lat, lng], ...]}
-        // 2) {"data": [[lat, lng], ...]}
-        // 3) Direktes Array von Punkten
         val pointsArr = trackResp.optJSONArray("points")
             ?: trackResp.optJSONArray("track")
-            ?: trackResp.optJSONArray("data")
-            ?: trackResp.optJSONArray("result")
             ?: return
-
         if (pointsArr.length() < 2) return
 
-        val poly = Polyline(map).apply {
-            outlinePaint.color = Color.parseColor("#00d4ff")
-            outlinePaint.strokeWidth = 3f
-            outlinePaint.alpha = 180
-        }
+        val myToken = AppPrefs.vehicleToken
+        val col = if (token == myToken) "#ffd700" else "#00d4ff"
 
-        for (i in 0 until pointsArr.length()) {
-            val pt = pointsArr.getJSONArray(i)
-            if (pt.length() >= 2) {
-                poly.addPoint(GeoPoint(pt.getDouble(0), pt.getDouble(1)))
+        runOnUiThread {
+            val existing = trackPolylines.remove(token)
+            existing?.let { map.overlays.remove(it) }
+
+            val poly = Polyline(map).apply {
+                outlinePaint.color = Color.parseColor(col)
+                outlinePaint.strokeWidth = 3f
+                outlinePaint.alpha = 180
             }
+            for (i in 0 until pointsArr.length()) {
+                val pt = pointsArr.getJSONArray(i)
+                if (pt.length() >= 2) poly.addPoint(GeoPoint(pt.getDouble(0), pt.getDouble(1)))
+            }
+            map.overlays.add(poly)
+            trackPolylines[token] = poly
+            map.invalidate()
         }
-
-        map.overlays.add(poly)
-        trackPolylines["self_track"] = poly
-    }
-
-    private fun clearVehicleTracks() {
-        trackPolylines.values.forEach { map.overlays.remove(it) }
-        trackPolylines.clear()
     }
 
     // ── GPS-Update ────────────────────────────────────────────────────────────
@@ -610,9 +693,9 @@ class MainActivity : AppCompatActivity() {
 
         if (firstGpsFix) {
             firstGpsFix = false
-            map.controller.setZoom(16.0)
+            map.controller.setZoom(18.0)
             map.controller.setCenter(pt)
-            AppPrefs.lastMapZoom = 16.0
+            AppPrefs.lastMapZoom = 18.0
             AppPrefs.lastMapLat  = lat
             AppPrefs.lastMapLng  = lng
         }
@@ -768,6 +851,7 @@ class MainActivity : AppCompatActivity() {
         vehicles.forEach { v ->
             val token = v.optString("token")
             val isMe  = token == myToken
+            val trackOn = vehicleTrackVisible[token] ?: false
 
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -781,16 +865,22 @@ class MainActivity : AppCompatActivity() {
             val dot = View(this).apply {
                 val col = if (v.optBoolean("collecting")) "#00d4ff" else "#7a9ab0"
                 setBackgroundColor(Color.parseColor(col))
-                layoutParams = LinearLayout.LayoutParams(8, 8)
-                    .apply { setMargins(0, 0, 8, 0) }
+                layoutParams = LinearLayout.LayoutParams(8, 8).apply { setMargins(0, 0, 8, 0) }
             }
             val name = TextView(this).apply {
-                text     = if (isMe) "▶ ${v.optString("name")} (Du)"
-                           else      v.optString("name")
+                text = if (isMe) "▶ ${v.optString("name")} (Du)" else v.optString("name")
                 setTextColor(Color.parseColor(if (isMe) "#ffd700" else "#c8d4e0"))
                 textSize = 12f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            header.addView(dot); header.addView(name)
+            val trackBtn = TextView(this).apply {
+                text = "🛣"
+                setTextColor(Color.parseColor(if (trackOn) "#ffd700" else "#4a5a6a"))
+                textSize = 14f
+                setPadding(8, 0, 0, 0)
+                setOnClickListener { toggleVehicleTrack(token) }
+            }
+            header.addView(dot); header.addView(name); header.addView(trackBtn)
             container.addView(header)
 
             val (lat, lng) = when {
@@ -831,8 +921,7 @@ class MainActivity : AppCompatActivity() {
             val dot = View(this).apply {
                 val col = if (AppPrefs.isCollecting) "#00d4ff" else "#7a9ab0"
                 setBackgroundColor(Color.parseColor(col))
-                layoutParams = LinearLayout.LayoutParams(8, 8)
-                    .apply { setMargins(0, 0, 8, 0) }
+                layoutParams = LinearLayout.LayoutParams(8, 8).apply { setMargins(0, 0, 8, 0) }
             }
             val name = TextView(this).apply {
                 text = "▶ ${AppPrefs.vehicleName} (Du)"
@@ -845,11 +934,8 @@ class MainActivity : AppCompatActivity() {
             val coordsLine = TextView(this).apply {
                 text = if (myLat != 0.0 || myLng != 0.0)
                     "    %.5f, %.5f".format(myLat, myLng)
-                else
-                    "    ⌛ kein GPS-Fix"
-                setTextColor(Color.parseColor(
-                    if (myLat != 0.0 || myLng != 0.0) "#4a5a6a" else "#ff6b35"
-                ))
+                else "    ⌛ kein GPS-Fix"
+                setTextColor(Color.parseColor(if (myLat != 0.0 || myLng != 0.0) "#4a5a6a" else "#ff6b35"))
                 textSize = 10f
                 typeface = Typeface.MONOSPACE
             }

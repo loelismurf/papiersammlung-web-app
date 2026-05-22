@@ -278,4 +278,23 @@
         android:layout_marginEnd="14dp"
         android:layout_marginBottom="24dp" />
 
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- VIEW-ONLY BANNER — Inaktives Gerät                                  -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <TextView
+        android:id="@+id/tv_view_only"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#DD991010"
+        android:textColor="#ffcccc"
+        android:textSize="12sp"
+        android:padding="10dp"
+        android:gravity="center"
+        android:text="⚠ VIEW ONLY – INAKTIV · Antippen zum Übernehmen"
+        android:visibility="gone"
+        android:elevation="9dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

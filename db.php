@@ -29,6 +29,7 @@ function cleanup_vehicles(): void {
     ensure_driven_segments_column();
     ensure_collecting_column();
     ensure_vehicle_tracks_table();
+    ensure_vehicle_device_column();
 }
 
 // ── Self-Healing: driven_segments ────────────────────────────────────────────
@@ -169,6 +170,16 @@ function all_segments_driven(array $driven): bool {
     return !in_array(false,$driven,true) && !in_array(null,$driven,true);
 }
 function init_segments(int $n): array { return array_fill(0,max(0,$n-1),false); }
+
+// ── Self-Healing: active_device_id für Multi-Device-Management ───────────────
+function ensure_vehicle_device_column(): void {
+    static $checked = false; if ($checked) return; $checked = true;
+    try {
+        $exists = db_val("SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='vehicles' AND COLUMN_NAME='active_device_id'");
+        if (!$exists) db_run("ALTER TABLE vehicles ADD COLUMN active_device_id VARCHAR(64) DEFAULT NULL");
+    } catch (Exception $e) {}
+}
 
 // ── API-Tokens für Mobile-Apps ────────────────────────────────────────────────
 function ensure_api_tokens_table(): void {

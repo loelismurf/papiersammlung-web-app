@@ -272,6 +272,7 @@ select:focus{border-color:var(--accent)}
         <button class="bulk-btn" id="btn-only-me" onclick="selectOnlyMe()">👤 Ich</button>
         <button class="bulk-btn active" id="btn-all-veh" onclick="selectAllVehicles()">👥 Alle</button>
         <button class="bulk-btn" onclick="deselectAllVehicles()">🚫</button>
+        <button class="bulk-btn" id="btn-all-tracks" onclick="toggleAllTracks()">🛣</button>
       </div>
     </div>
     <div id="veh-panel"><div id="veh-list"></div></div>
@@ -287,6 +288,10 @@ select:focus{border-color:var(--accent)}
     <div class="mb"><div class="ml">Fahrzeuge</div><div class="mv" id="sv">0</div></div>
     <div class="mb"><div class="ml">Aktiv</div><div class="mv" id="sa">0</div></div>
     <div class="mb"><div class="ml">Erledigt</div><div class="mv" id="sd">0</div></div>
+  </div>
+  <!-- Multi-Device: View-Only-Banner -->
+  <div id="view-only-banner" onclick="takeoverDevice()" style="display:none;position:absolute;bottom:58px;left:50%;transform:translateX(-50%);z-index:600;background:rgba(220,40,40,.93);backdrop-filter:blur(6px);border:1px solid #ff4444;border-radius:4px;padding:9px 20px;font-size:12px;font-family:var(--font-mono);color:#fff;cursor:pointer;white-space:nowrap;text-align:center;animation:warnpulse 2s infinite">
+    ⚠ VIEW ONLY – INAKTIV · Antippen zum Übernehmen
   </div>
   <!-- Warnung: Fahrzeug bewegt sich, aber Sammelmodus ist aus -->
   <div id="no-collect-warn" onclick="handleWarnClick()">
@@ -328,6 +333,16 @@ let isCollecting = false;
 let currentColId = null;
 let myLat = null, myLng = null, mySpeed = null, wakeLock = null;
 
+// ── Multi-Device: Device-ID (persistent) + View-Only-Status ──────────────────
+let myDeviceId = localStorage.getItem('ps_device_id');
+if (!myDeviceId) {
+  myDeviceId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).substr(2);
+  localStorage.setItem('ps_device_id', myDeviceId);
+}
+let isViewOnly = false;
+
 // iOS-Erkennung: alle Browser auf iOS nutzen WebKit → kein Hintergrund-GPS möglich.
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
            || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -335,9 +350,74 @@ let routes = [], vehicles = [];
 const routeLayers = {}, vehicleMarkers = {}, vehicleMarkerProps = {};
 
 // ── Fahrspur pro Fahrzeug ─────────────────────────────────────────────────────
-const trackLayers   = {};  // token → Leaflet polyline
-const trackVisible  = {};  // token → bool
-const trackLoading  = new Set();
+const trackLayers        = {};  // token → Leaflet polyline
+const trackVisible       = {};  // token → bool
+const trackLoading       = new Set();
+const trackAnalysisLayers = {}; // token → array of stop/speed map layers
+let   showAllTracks      = false;
+
+function clearTrackAnalysis(token) {
+  if (trackAnalysisLayers[token]) {
+    trackAnalysisLayers[token].forEach(l => { try { map.removeLayer(l); } catch(e){} });
+    delete trackAnalysisLayers[token];
+  }
+}
+
+function renderTrackAnalysis(token, pts) {
+  clearTrackAnalysis(token);
+  if (!pts || pts.length < 2) return;
+  const hasSpeed = pts.some(p => p[2] !== null && p[2] !== undefined);
+  if (!hasSpeed) return;
+
+  const STOP_MS = 1 / 3.6; // 1 km/h in m/s
+  const layers = [];
+
+  // Find stop clusters (consecutive points with speed < 1 km/h)
+  const stops = [];
+  let clStart = -1;
+  for (let i = 0; i < pts.length; i++) {
+    const spd = pts[i][2];
+    const stopped = spd !== null && spd !== undefined && spd < STOP_MS;
+    if (stopped && clStart < 0) clStart = i;
+    else if (!stopped && clStart >= 0) {
+      const cl = pts.slice(clStart, i);
+      stops.push({lat:cl.reduce((s,p)=>s+p[0],0)/cl.length, lng:cl.reduce((s,p)=>s+p[1],0)/cl.length, si:clStart, ei:i-1});
+      clStart = -1;
+    }
+  }
+  if (clStart >= 0) {
+    const cl = pts.slice(clStart);
+    stops.push({lat:cl.reduce((s,p)=>s+p[0],0)/cl.length, lng:cl.reduce((s,p)=>s+p[1],0)/cl.length, si:clStart, ei:pts.length-1});
+  }
+
+  // Stop-Marker (rote Punkte)
+  stops.forEach((s, i) => {
+    layers.push(L.circleMarker([s.lat,s.lng],{radius:5,fillColor:'#ff4444',color:'#fff',weight:1.5,fillOpacity:.95})
+      .bindTooltip(`⏸ Halt ${i+1}`,{className:'rtt',direction:'top'}).addTo(map));
+  });
+
+  // Durchschnittsgeschwindigkeit zwischen Halten
+  const addSpeedLabel = (from, to) => {
+    const seg = pts.slice(from, to+1).filter(p=>p[2]!==null&&p[2]!==undefined);
+    if (!seg.length) return;
+    const avg = seg.reduce((s,p)=>s+p[2],0)/seg.length*3.6;
+    const mid = pts[Math.min(Math.floor((from+to)/2), pts.length-1)];
+    layers.push(L.marker([mid[0],mid[1]],{
+      icon:L.divIcon({className:'',html:`<div style="background:rgba(10,12,15,.85);color:#ffd700;font-size:9px;padding:2px 5px;border-radius:3px;white-space:nowrap;font-family:'JetBrains Mono',monospace">Ø ${avg.toFixed(0)} km/h</div>`,iconAnchor:[0,0]}),
+      interactive:false
+    }).addTo(map));
+  };
+
+  if (stops.length === 0) {
+    addSpeedLabel(0, pts.length-1);
+  } else {
+    if (stops[0].si > 0) addSpeedLabel(0, stops[0].si-1);
+    for (let i = 0; i < stops.length-1; i++) addSpeedLabel(stops[i].ei+1, stops[i+1].si-1);
+    if (stops[stops.length-1].ei < pts.length-1) addSpeedLabel(stops[stops.length-1].ei+1, pts.length-1);
+  }
+
+  if (layers.length) trackAnalysisLayers[token] = layers;
+}
 
 async function loadTrack(token) {
   if (!currentColId || trackLoading.has(token)) return;
@@ -348,11 +428,13 @@ async function loadTrack(token) {
     const pts = data.points || data.track || [];
     if (pts.length > 1) {
       if (trackLayers[token]) map.removeLayer(trackLayers[token]);
+      clearTrackAnalysis(token);
       const veh = vehicles.find(v=>v.token===token);
       const col = veh?.token===myToken ? '#ffd700' : (veh?.collecting ? '#00d4ff' : '#4a5a6a');
-      trackLayers[token] = L.polyline(pts, {
+      trackLayers[token] = L.polyline(pts.map(p=>[p[0],p[1]]), {
         color: col, weight:3, opacity:0.65, dashArray:'6,4', lineCap:'round'
       }).addTo(map);
+      renderTrackAnalysis(token, pts);
     }
   } catch(e){}
   trackLoading.delete(token);
@@ -363,6 +445,22 @@ function toggleTrack(token) {
     loadTrack(token);
   } else {
     if (trackLayers[token]) { map.removeLayer(trackLayers[token]); delete trackLayers[token]; }
+    clearTrackAnalysis(token);
+  }
+  renderVehicleList();
+}
+function toggleAllTracks() {
+  showAllTracks = !showAllTracks;
+  if (showAllTracks) {
+    vehicles.forEach(v=>{ if(!trackVisible[v.token]){trackVisible[v.token]=true;loadTrack(v.token);} });
+  } else {
+    vehicles.forEach(v=>{
+      if(trackVisible[v.token]){
+        trackVisible[v.token]=false;
+        if(trackLayers[v.token]){map.removeLayer(trackLayers[v.token]);delete trackLayers[v.token];}
+        clearTrackAnalysis(v.token);
+      }
+    });
   }
   renderVehicleList();
 }
@@ -562,8 +660,9 @@ function urlB64ToUint8Array(b64) {
 }
 
 function sendGPS(lat, lng) {
+  if (isViewOnly) return; // View-Only: kein GPS senden
   lastGpsSentAt = Date.now();
-  const payload = { token:myToken, lat, lng, collection_id:currentColId, speed:mySpeed };
+  const payload = { token:myToken, lat, lng, collection_id:currentColId, speed:mySpeed, device_id:myDeviceId };
   const c = vehicleSnap[myToken];
   if (c && Math.abs(c.srcLat-lat)<0.002 && Math.abs(c.srcLng-lng)<0.002) {
     payload.snap_lat = c.lat; payload.snap_lng = c.lng;
@@ -692,16 +791,40 @@ document.getElementById('col-select').addEventListener('change',async function()
 async function autoJoin(colId){
   document.getElementById('v-connecting').style.display='block';
   document.getElementById('v-info').style.display='none';
-  const r=await api('vehicle_join',{name:myName||MY_USERNAME,collection_id:colId});
+  const r=await api('vehicle_join',{name:myName||MY_USERNAME,collection_id:colId,device_id:myDeviceId});
   if(r.error){notify('Verbindungsfehler: '+r.error,'w');return;}
   myToken=r.token; myName=r.name; isCollecting=r.collecting||false;
   localStorage.setItem('ps_token',myToken); localStorage.setItem('ps_name',myName);
   isJoined=true;
+
+  if (r.conflict) {
+    if (confirm(`⚠ Ein anderes Gerät ist bereits aktiv!\n\nFahrzeug: ${r.name}\n\nDieses Gerät übernehmen?\n(Das andere Gerät wird auf "Nur Anzeigen" gesetzt)`)) {
+      await takeoverDevice();
+    } else {
+      isViewOnly = true;
+    }
+  } else {
+    isViewOnly = r.view_only || false;
+  }
+  updateViewOnlyBanner();
+
   document.getElementById('v-connecting').style.display='none';
   document.getElementById('v-info').style.display='block';
   document.getElementById('disp-vname').textContent=myName;
   setMyStatus(r.status||'idle'); updateCollectingUI(); showMapBtns(); startGPS();
   await requestWakeLock();
+}
+
+async function takeoverDevice() {
+  const r = await api('vehicle_takeover',{token:myToken,device_id:myDeviceId});
+  if(r.ok) {
+    isViewOnly=false; updateViewOnlyBanner();
+    notify('✅ Dieses Gerät ist jetzt aktiv','g');
+  }
+}
+function updateViewOnlyBanner() {
+  const b=document.getElementById('view-only-banner');
+  if(b) b.style.display=isViewOnly?'flex':'none';
 }
 
 // ── Sammelmodus ───────────────────────────────────────────────────────────────
@@ -764,8 +887,18 @@ async function pollState(){
     if(data&&!data.error){routes=data.routes||[];vehicles=data.vehicles||[];renderAll();document.getElementById('pt').textContent='Live';document.getElementById('no-coll').style.display=routes.length?'none':'block';}
   }catch(e){document.getElementById('pt').textContent='Fehler';}
   maybeRefreshTracks();
-  // Vehicle-Ping: last_seen aktualisieren damit idle Fahrzeuge nicht als offline gelten
-  if(myToken) fetch(`${API}?action=vehicle_ping`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:myToken}),keepalive:true}).catch(()=>{});
+  // Vehicle-Ping: last_seen aktualisieren + View-Only-Status prüfen
+  if(myToken) fetch(`${API}?action=vehicle_ping`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:myToken,device_id:myDeviceId}),keepalive:true})
+    .then(r=>r.json()).then(pingResp=>{
+      if(pingResp && typeof pingResp.view_only==='boolean') {
+        const wasViewOnly=isViewOnly;
+        isViewOnly=pingResp.view_only;
+        updateViewOnlyBanner();
+        if(!wasViewOnly&&isViewOnly) notify('⚠ Dieses Gerät wurde auf View Only gesetzt','w');
+        // Wenn altes Gerät offline ging → automatisch übernehmen
+        if(wasViewOnly&&!isViewOnly) takeoverDevice().catch(()=>{});
+      }
+    }).catch(()=>{});
   setTimeout(()=>pd.classList.remove('on'),400);
 }
 
@@ -806,7 +939,7 @@ function startGPS(){
       if (followMode && isJoined) {
         map.panTo([myLat, myLng], {animate:true, duration:1.0});
       }
-      if(!gpsInit){map.setView([myLat,myLng],15);gpsInit=true;}
+      if(!gpsInit){map.setView([myLat,myLng],17);gpsInit=true;}
       updateSelfMarker();
     },
     err=>{document.getElementById('gdot').className='gdot err';document.getElementById('gps-txt').textContent={1:'GPS verweigert',2:'Position n/a',3:'GPS Timeout'}[err.code]||err.message;},
@@ -970,6 +1103,8 @@ function renderVehicleList(){
     </div>`;
   }).join('');
   updateVehBulkBtns();
+  const atBtn=document.getElementById('btn-all-tracks');
+  if(atBtn) atBtn.classList.toggle('active',showAllTracks);
 }
 
 function updateStats(){document.getElementById('sv').textContent=vehicles.length;document.getElementById('sa').textContent=routes.filter(r=>r.status==='active').length;document.getElementById('sd').textContent=routes.filter(r=>r.status==='completed').length;}

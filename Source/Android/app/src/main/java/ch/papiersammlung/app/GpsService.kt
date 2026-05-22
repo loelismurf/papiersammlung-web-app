@@ -181,9 +181,11 @@ class GpsService : Service() {
         if (token.isEmpty() || cid.isEmpty()) { updateNotification(); return }
 
         scope.launch {
+            if (AppPrefs.isViewOnly) { updateNotification(); return@launch }
             if (ApiClient.isOnline()) {
                 val result = ApiClient.sendPosition(token, loc.latitude, loc.longitude,
-                    if (loc.hasSpeed()) loc.speed.toDouble() else null, cid)
+                    if (loc.hasSpeed()) loc.speed.toDouble() else null, cid,
+                    deviceId = AppPrefs.deviceId)
                 if (result == null && AppPrefs.isCollecting) {
                     offlineBuffer.buffer(token, cid, loc.latitude, loc.longitude,
                         if (loc.hasSpeed()) loc.speed.toDouble() else null)

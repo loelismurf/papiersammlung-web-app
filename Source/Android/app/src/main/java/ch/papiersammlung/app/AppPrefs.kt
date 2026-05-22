@@ -64,6 +64,21 @@ object AppPrefs {
         get() = prefs().getBoolean("is_collecting", false)
         set(v) = prefs().edit().putBoolean("is_collecting", v).apply()
 
+    // Persistente Geräte-ID für Multi-Device-Management
+    val deviceId: String
+        get() {
+            val existing = prefs().getString("device_id", "") ?: ""
+            if (existing.isNotEmpty()) return existing
+            val newId = java.util.UUID.randomUUID().toString()
+            prefs().edit().putString("device_id", newId).apply()
+            return newId
+        }
+
+    // View-Only: dieses Gerät ist inaktiv, ein anderes Gerät sendet GPS
+    var isViewOnly: Boolean
+        get() = prefs().getBoolean("is_view_only", false)
+        set(v) = prefs().edit().putBoolean("is_view_only", v).apply()
+
     // ── Karte ─────────────────────────────────────────────────────────────────
     var lastMapLat: Double
         get() = prefs().getFloat("map_lat", 47.3769f).toDouble()

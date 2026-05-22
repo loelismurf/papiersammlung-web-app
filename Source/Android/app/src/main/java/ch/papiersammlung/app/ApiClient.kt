@@ -182,17 +182,19 @@ object ApiClient {
         }
 
     /** Fahrzeug-Join */
-    suspend fun vehicleJoin(name: String, collectionId: String = ""): JSONObject? =
+    suspend fun vehicleJoin(name: String, collectionId: String = "", deviceId: String = ""): JSONObject? =
         post("vehicle_join", JSONObject().apply {
             put("name", name)
             if (collectionId.isNotEmpty()) put("collection_id", collectionId)
+            if (deviceId.isNotEmpty()) put("device_id", deviceId)
         })
 
     /** GPS-Position senden */
     suspend fun sendPosition(
         token: String, lat: Double, lng: Double,
         speed: Double?, collectionId: String,
-        snapLat: Double? = null, snapLng: Double? = null
+        snapLat: Double? = null, snapLng: Double? = null,
+        deviceId: String = ""
     ): JSONObject? {
         val body = JSONObject().apply {
             put("token", token)
@@ -204,6 +206,7 @@ object ApiClient {
                 put("snap_lat", snapLat)
                 put("snap_lng", snapLng)
             }
+            if (deviceId.isNotEmpty()) put("device_id", deviceId)
         }
         return post("vehicle_position", body)
     }
@@ -216,8 +219,18 @@ object ApiClient {
         })
 
     /** Ping */
-    suspend fun ping(token: String): JSONObject? =
-        post("vehicle_ping", JSONObject().apply { put("token", token) })
+    suspend fun ping(token: String, deviceId: String = ""): JSONObject? =
+        post("vehicle_ping", JSONObject().apply {
+            put("token", token)
+            if (deviceId.isNotEmpty()) put("device_id", deviceId)
+        })
+
+    /** Aktives Gerät übernehmen */
+    suspend fun takeoverDevice(token: String, deviceId: String): JSONObject? =
+        post("vehicle_takeover", JSONObject().apply {
+            put("token", token)
+            put("device_id", deviceId)
+        })
 
     /** Aktive Sammlungen laden → JSONArray */
     suspend fun getCollections(): JSONArray? = getArray("collections_active")
