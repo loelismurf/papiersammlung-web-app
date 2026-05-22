@@ -873,6 +873,12 @@ class MainActivity : AppCompatActivity() {
                 textSize = 12f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
+            val (lat, lng) = when {
+                isMe && (myLat != 0.0 || myLng != 0.0) -> myLat to myLng
+                !v.isNull("lat") && !v.isNull("lng")   -> v.optDouble("lat") to v.optDouble("lng")
+                else                                   -> 0.0 to 0.0
+            }
+
             val trackBtn = TextView(this).apply {
                 text = "🛣"
                 setTextColor(Color.parseColor(if (trackOn) "#ffd700" else "#4a5a6a"))
@@ -880,14 +886,25 @@ class MainActivity : AppCompatActivity() {
                 setPadding(8, 0, 0, 0)
                 setOnClickListener { toggleVehicleTrack(token) }
             }
-            header.addView(dot); header.addView(name); header.addView(trackBtn)
+            header.addView(dot); header.addView(name)
+            if (lat != 0.0 || lng != 0.0) {
+                val zoomBtn = TextView(this).apply {
+                    text = "🔍"
+                    setTextColor(Color.parseColor("#4a5a6a"))
+                    textSize = 14f
+                    setPadding(8, 0, 0, 0)
+                    setOnClickListener {
+                        followMode = false
+                        updateFollowButton()
+                        map.controller.animateTo(org.osmdroid.util.GeoPoint(lat, lng))
+                        map.controller.setZoom(17.0)
+                    }
+                }
+                header.addView(zoomBtn)
+            }
+            header.addView(trackBtn)
             container.addView(header)
 
-            val (lat, lng) = when {
-                isMe && (myLat != 0.0 || myLng != 0.0) -> myLat to myLng
-                !v.isNull("lat") && !v.isNull("lng")   -> v.optDouble("lat") to v.optDouble("lng")
-                else                                   -> 0.0 to 0.0
-            }
             if (lat != 0.0 || lng != 0.0) {
                 val coords = TextView(this).apply {
                     text = "    %.5f, %.5f".format(lat, lng)
