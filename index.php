@@ -737,6 +737,9 @@ L.control.zoom({position:'bottomleft'}).addTo(map);
 
 // ── Kompass / Karten-Rotation ─────────────────────────────────────────────────
 let compassMode = false;
+let compassSmoothed = null;          // geglätteter Bearing-Wert
+const COMPASS_ALPHA = 0.12;          // EMA-Gewicht (kleiner = glatter, träger)
+const COMPASS_THRESHOLD_DEG = 1.5;  // Mindeständerung in Grad vor Karten-Update
 function toggleCompass() {
   compassMode = !compassMode;
   const btn = document.getElementById('btn-compass');
@@ -764,16 +767,31 @@ function startCompass() {
 function stopCompass() {
   window.removeEventListener('deviceorientationabsolute', onCompassEvent, true);
   window.removeEventListener('deviceorientation', onCompassEvent, true);
+  compassSmoothed = null;
   if (typeof map.setBearing === 'function') map.setBearing(0);
 }
 function onCompassEvent(e) {
   if (!compassMode || typeof map.setBearing !== 'function') return;
   // iOS: webkitCompassHeading = Grad von magnetisch Nord (im Uhrzeigersinn)
   // Android/Desktop: alpha = Grad gegen Uhrzeigersinn von Nord → invertieren
-  const hdg = e.webkitCompassHeading != null
+  const raw = e.webkitCompassHeading != null
     ? e.webkitCompassHeading
     : (360 - (e.alpha || 0)) % 360;
-  map.setBearing(hdg);
+
+  // EMA-Glättung mit Wrap-around-Behandlung (0°/360°-Übergang)
+  if (compassSmoothed === null) {
+    compassSmoothed = raw;
+  } else {
+    let diff = raw - compassSmoothed;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    compassSmoothed = ((compassSmoothed + COMPASS_ALPHA * diff) + 360) % 360;
+  }
+
+  // Nur updaten wenn Änderung gross genug (verhindert Flackern bei Stillstand)
+  const current = map.getBearing ? map.getBearing() : 0;
+  const change = Math.abs(((compassSmoothed - current + 540) % 360) - 180);
+  if (change > COMPASS_THRESHOLD_DEG) map.setBearing(compassSmoothed);
 }
 
 // ── Follow-Modus ──────────────────────────────────────────────────────────────

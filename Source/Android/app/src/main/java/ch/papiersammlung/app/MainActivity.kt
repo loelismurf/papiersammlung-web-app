@@ -32,8 +32,10 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import org.osmdroid.views.overlay.compass.CompassOverlay
-import org.osmdroid.views.overlay.compass.InternalCompassOrientationProvider
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 
 /**
@@ -65,7 +67,30 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnToggleTrack: ImageButton
     private lateinit var tvViewOnly: TextView
     private lateinit var btnCompass: ImageButton
-    private var compassOverlay: CompassOverlay? = null
+    private var compassActive   = false
+    private var compassSmoothed = Float.NaN
+    private val COMPASS_ALPHA   = 0.12f   // EMA-Gewicht
+    private val sensorMgr by lazy { getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    private val rotVecSensor by lazy { sensorMgr.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }
+
+    private val compassSensorListener = object : SensorEventListener {
+        private val rotMatrix  = FloatArray(9)
+        private val orientation = FloatArray(3)
+        override fun onAccuracyChanged(s: Sensor?, a: Int) {}
+        override fun onSensorChanged(event: SensorEvent) {
+            if (!compassActive) return
+            SensorManager.getRotationMatrixFromVector(rotMatrix, event.values)
+            SensorManager.getOrientation(rotMatrix, orientation)
+            val azDeg = ((Math.toDegrees(orientation[0].toDouble()) + 360) % 360).toFloat()
+            // EMA-Glättung mit Wrap-around
+            compassSmoothed = if (compassSmoothed.isNaN()) azDeg else {
+                var diff = azDeg - compassSmoothed
+                if (diff > 180) diff -= 360; if (diff < -180) diff += 360
+                ((compassSmoothed + COMPASS_ALPHA * diff) + 360f) % 360f
+            }
+            runOnUiThread { map.mapOrientation = -compassSmoothed }
+        }
+    }
 
     // ── System Services ───────────────────────────────────────────────────────
     private lateinit var locationManager: LocationManager
@@ -175,13 +200,16 @@ class MainActivity : AppCompatActivity() {
         isViewOnly = AppPrefs.isViewOnly
         updateViewOnlyBanner()
         // Kompass-Sensor reaktivieren falls er aktiv war
-        compassOverlay?.takeIf { it.isCompassEnabled }?.enableCompass()
+        if (compassActive) {
+            compassSmoothed = Float.NaN
+            sensorMgr.registerListener(compassSensorListener, rotVecSensor, SensorManager.SENSOR_DELAY_GAME)
+        }
     }
 
     override fun onPause() {
         super.onPause()
         map.onPause()
-        compassOverlay?.disableCompass()
+        if (compassActive) sensorMgr.unregisterListener(compassSensorListener)
         try { unregisterReceiver(locationReceiver) } catch (_: Exception) {}
         try { locationManager.removeUpdates(directLocationListener) } catch (_: Exception) {}
         pollJob?.cancel()
@@ -335,14 +363,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleCompass() {
-        val overlay = compassOverlay ?: return
-        if (overlay.isCompassEnabled) {
-            overlay.disableCompass()
-            map.mapOrientation = 0f  // Norden oben
-            btnCompass.setColorFilter(Color.parseColor("#7a9ab0"))
-        } else {
-            overlay.enableCompass()
+        compassActive = !compassActive
+        if (compassActive) {
+            compassSmoothed = Float.NaN
+            sensorMgr.registerListener(compassSensorListener, rotVecSensor, SensorManager.SENSOR_DELAY_GAME)
             btnCompass.setColorFilter(Color.parseColor("#00d4ff"))
+        } else {
+            sensorMgr.unregisterListener(compassSensorListener)
+            map.mapOrientation = 0f
+            btnCompass.setColorFilter(Color.parseColor("#7a9ab0"))
         }
         map.invalidate()
     }
@@ -433,10 +462,6 @@ class MainActivity : AppCompatActivity() {
         val rotationGesture = RotationGestureOverlay(map)
         rotationGesture.isEnabled = true
         map.overlays.add(rotationGesture)
-
-        // Kompass-Overlay (Sensor-Ausrichtung, via Button togglebar)
-        compassOverlay = CompassOverlay(this, InternalCompassOrientationProvider(this), map)
-        map.overlays.add(compassOverlay!!)
 
         map.overlayManager.tilesOverlay.setColorFilter(
             android.graphics.ColorMatrixColorFilter(
