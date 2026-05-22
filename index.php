@@ -33,7 +33,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--
 /* ── Sidebar ── */
 #sidebar{width:300px;min-width:300px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:10}
 #mob-handle{display:none}
-#sidebar-inner{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+#sidebar-inner{display:flex;flex-direction:column;flex:1;min-height:0}
 #hdr{padding:10px 14px;border-bottom:1px solid var(--border);background:#0c0e12;display:flex;align-items:center;gap:8px;flex-shrink:0}
 .logo{font-size:15px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);flex:1}
 .logo span{color:var(--text)}
@@ -535,6 +535,11 @@ function showAllRoutes(){ localHiddenRoutes.clear(); renderRoutes();renderRouteL
 function hideAllRoutes(){ routes.forEach(r=>localHiddenRoutes.add(r.id)); renderRoutes();renderRouteList(); }
 
 // ── Fahrzeug-Selektion ────────────────────────────────────────────────────────
+function zoomToVehicle(token) {
+  const v = vehicles.find(v=>v.token===token);
+  if (v?.lat!=null) { map.setView([v.lat, v.lng], 17); setFollowMode(false); }
+}
+
 const deselectedVehicles = new Set();
 function isVehicleVisible(v){ return !deselectedVehicles.has(v.token); }
 function toggleVehicle(token){ deselectedVehicles.has(token)?deselectedVehicles.delete(token):deselectedVehicles.add(token); updateVehBulkBtns();renderVehicleMarkers();renderVehicleList(); }
@@ -1119,6 +1124,7 @@ function renderVehicleList(){
         <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.name}${self?' <small style="color:var(--accent)">(Ich)</small>':''}${collecting?' <span style="color:var(--green);font-size:9px">●SAM</span>':''}</div>
         <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">${v.active_route_id?(rm[v.active_route_id]||'—'):'—'}</div>
       </div>
+      ${v.lat!=null?`<span class="vi-track" onclick="zoomToVehicle('${v.token}')" title="Zur Position">🔍</span>`:''}
       <span class="vi-track${trackOn?' on':''}" onclick="toggleTrack('${v.token}')" title="Fahrspur ein/aus">🛣</span>
       ${trackOn?`<span class="vi-track${trackAnalysisVisible[v.token]?' on':''}" onclick="toggleTrackAnalysis('${v.token}')" title="Halte &amp; Geschwindigkeit">📊</span>`:''}
       <span class="vi-eye" onclick="toggleVehicle('${v.token}')">${vis?'👁':'○'}</span>
